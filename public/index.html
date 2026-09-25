@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>dicevibe</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-screen="connecting">
+
+<div id="conn-banner" class="banner" hidden>Connection lost — reconnecting…</div>
+
+<!-- ── Connecting ─────────────────────────────────────────────────────────── -->
+<section id="screen-connecting" class="screen screen-center">
+  <div class="spinner"></div>
+  <p id="connecting-text" class="muted">Connecting…</p>
+</section>
+
+<!-- ── Menu ───────────────────────────────────────────────────────────────── -->
+<section id="screen-menu" class="screen screen-center">
+  <div class="card">
+    <h1 class="brand">dicevibe</h1>
+    <p class="muted sub">Roll dice, take provinces, take everything.</p>
+
+    <label class="field">
+      <span>Your name (optional)</span>
+      <input id="nickname" type="text" maxlength="16" autocomplete="off" placeholder="ana">
+    </label>
+
+    <div class="split">
+      <div class="panel">
+        <h2>Create a game</h2>
+        <label class="field">
+          <span>Map</span>
+          <select id="map-select"></select>
+        </label>
+        <label class="field">
+          <span>Size</span>
+          <select id="size-select"></select>
+        </label>
+        <button id="btn-create" class="primary">Create game</button>
+      </div>
+
+      <div class="panel">
+        <h2>Open games</h2>
+        <ul id="open-games" class="rooms"></ul>
+        <p id="open-games-empty" class="muted small" hidden>No games waiting — create one.</p>
+      </div>
+    </div>
+
+    <p id="menu-error" class="error" hidden></p>
+  </div>
+</section>
+
+<!-- ── Lobby ──────────────────────────────────────────────────────────────── -->
+<section id="screen-lobby" class="screen screen-center">
+  <div class="card">
+    <h1 class="brand">Lobby</h1>
+
+    <p id="lobby-map" class="muted small"></p>
+
+    <ul id="lobby-players" class="players"></ul>
+
+    <p id="lobby-hint" class="muted small"></p>
+
+    <div class="actions">
+      <button id="btn-start" class="primary">Start game</button>
+      <button id="btn-add-bot" class="ghost">Add bot</button>
+      <button id="btn-leave" class="ghost">Leave</button>
+    </div>
+  </div>
+</section>
+
+<!-- ── Game ───────────────────────────────────────────────────────────────── -->
+<section id="screen-game" class="screen">
+  <div class="game-layout">
+    <div class="board-wrap">
+      <svg id="board" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+
+    <aside class="rail">
+      <div id="turn-line" class="turn-line"></div>
+
+      <div class="turn-actions">
+        <button id="btn-end-turn" class="primary">End turn</button>
+        <button id="btn-hurry" class="ghost hurry" title="Move the bot now" aria-label="Move the bot now">⏩</button>
+      </div>
+      <p id="hint-line" class="hint"></p>
+
+      <ul id="game-players" class="players"></ul>
+
+      <ol id="roll-log" class="log"></ol>
+
+      <button id="btn-abandon" class="danger wide" hidden>Abandon game</button>
+    </aside>
+  </div>
+</section>
+
+<!-- ── Overlays ───────────────────────────────────────────────────────────── -->
+<div id="overlay-waiting" class="overlay" hidden>
+  <div class="overlay-card">
+    <div class="spinner"></div>
+    <h2 id="waiting-title">Waiting for a player</h2>
+    <p id="waiting-body" class="muted"></p>
+  </div>
+</div>
+
+<div id="overlay-gameover" class="overlay" hidden>
+  <div class="overlay-card">
+    <div id="winner-swatch" class="swatch big"></div>
+    <h2 id="winner-title">Winner</h2>
+    <p class="muted">Every province is theirs.</p>
+    <button id="btn-again" class="primary">Back to menu</button>
+  </div>
+</div>
+
+<div id="toasts" class="toasts"></div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+npm-debug.log*
+
+# Scratch output from browser-driven testing.
+.playwright-mcp/
+# Screenshots taken while checking a change by hand. The one the README uses is
+# deliberate and lives in docs/, so these are root-level only.
+/*.png

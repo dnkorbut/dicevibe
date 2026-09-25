@@ -1,0 +1,575 @@
+:root {
+  --bg: #0f1117;
+  --panel: #171a23;
+  --panel-2: #1e2230;
+  --line: #2a2f3e;
+  --text: #e6e9f0;
+  --muted: #8b93a7;
+  --accent: #5b8def;
+  --accent-ink: #0b0d13;
+  --danger: #e0574f;
+  --ok: #4fbf7b;
+  --leader: #e0b23a;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+/* A class that sets `display` outranks the UA's `[hidden] { display: none }`,
+   so anything toggled via the hidden attribute needs this to actually hide. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.error { color: var(--danger); }
+
+/* ── Screens ──────────────────────────────────────────────────────────────── */
+
+.screen { display: none; }
+body[data-screen="connecting"] #screen-connecting,
+body[data-screen="menu"] #screen-menu,
+body[data-screen="lobby"] #screen-lobby,
+body[data-screen="game"] #screen-game { display: block; }
+
+.screen-center {
+  min-height: 100vh;
+  display: none;
+  place-items: center;
+  padding: 24px;
+}
+body[data-screen="connecting"] #screen-connecting,
+body[data-screen="menu"] #screen-menu,
+body[data-screen="lobby"] #screen-lobby { display: grid; }
+
+.card {
+  width: 100%;
+  max-width: 620px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+}
+
+.brand {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+.brand + .sub { margin: 4px 0 24px; }
+
+h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; }
+
+/* ── Forms ────────────────────────────────────────────────────────────────── */
+
+.field { display: block; margin-bottom: 14px; }
+.field > span {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+input, select {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 560px) { .split { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.panel h2 { margin-bottom: 12px; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+
+button {
+  padding: 10px 16px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .12s, opacity .12s;
+}
+button:hover:not(:disabled) { filter: brightness(1.25); }
+button:disabled { opacity: .38; cursor: not-allowed; }
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.ghost { background: transparent; }
+button.danger { background: transparent; border-color: #6b2f2b; color: #f08a83; }
+button.wide { width: 100%; }
+
+/* ── Lobby ────────────────────────────────────────────────────────────────── */
+
+/* Open games. Each row is the whole interaction: no code to read or type. */
+.rooms { list-style: none; margin: 0; padding: 0; }
+.rooms li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+}
+.rooms li:last-child { margin-bottom: 0; }
+.room-info { display: flex; flex-direction: column; min-width: 0; }
+.room-host { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.rooms button { padding: 6px 12px; flex: none; }
+
+.players { list-style: none; margin: 16px 0; padding: 0; }
+.players li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+}
+.players li.is-turn { border-color: var(--accent); }
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: none;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+}
+.swatch.big { width: 44px; height: 44px; border-radius: 10px; margin-bottom: 9px; }
+
+.players .name { flex: 1; font-weight: 600; }
+.players .meta { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* The per-bot remove control in the lobby. Small and quiet: it sits inside a
+   list row that is mostly informational. */
+.players button.drop {
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  font-size: 16px;
+  flex: none;
+  color: var(--muted);
+}
+.players button.drop:hover:not(:disabled) { color: var(--danger); }
+
+/* The alliance controls in the game rail. Square glyph buttons — the same 22px
+   as `button.drop` above, so they read as part of the row rather than as three
+   more words in it: the row already holds a swatch, a name, a tag,
+   `12 terr · 4 stock` and a connection dot.
+
+   The glyph is the whole label, so the `title` ui.js sets on each one is
+   load-bearing rather than decorative. Deliberately not `display: none` at rest
+   either — an alliance nobody can find is the whole failure this replaces. */
+.players button.ally {
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 700;
+  flex: none;
+  color: var(--muted);
+}
+.players button.ally:hover:not(:disabled) { color: var(--text); }
+/* Accept and Decline are one answer to one offer, so they stay on one line even
+   when the name beside them is long. Tight, because the pair is one control. */
+.ally-actions { display: flex; gap: 3px; flex: none; }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.dot.off { background: #6a5a2a; }
+
+.tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* The player who is ahead. Gold rather than the accent, which the row border
+   already means "your turn" in — a leader who is also the player to move would
+   otherwise wear the same colour twice for two different reasons. */
+.crown { color: var(--leader); font-size: 14px; line-height: 1; flex: none; }
+
+.actions { display: flex; gap: 10px; margin-top: 18px; }
+
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: #6a4a12;
+  color: #ffe9b8;
+  text-align: center;
+  padding: 7px;
+  font-size: 14px;
+}
+
+/* ── Game layout ──────────────────────────────────────────────────────────── */
+
+.game-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  min-height: 100vh;
+}
+@media (max-width: 900px) { .game-layout { grid-template-columns: 1fr; } }
+
+.board-wrap { position: relative; display: flex; align-items: center; padding: 14px; }
+#board { width: 100%; height: auto; max-height: calc(100vh - 28px); }
+
+/* The turn has come round to you. The board's whole surround is painted, not a
+   line drawn on the map, so the colour runs from the map's edge out to the edge
+   of the column — see `setBoardAlert` in ui.js for why that gap is not a fixed
+   width. The map itself is drawn over the middle of it.
+
+   Red, and the only red on the board: every other mark down there is white or a
+   player's own colour, so this cannot be mistaken for a border, a selection or
+   an attack. `--danger` fills the padding box, which is what reaches into the
+   wrapper's own 14px of padding as well as the margin the letterboxed map
+   leaves above and below it. */
+.board-wrap.alert { background: var(--danger); }
+
+.rail {
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+.turn-line { font-size: 17px; font-weight: 700; }
+/* A bot mid-pause. Muted rather than green: the green is "you", and this is
+   precisely the turn that is not yours. */
+.turn-line .thinking { color: var(--muted); }
+
+/* End turn and the hurry button share a row. They answer one question between
+   them — wait for the machine, or make it go — and the glyph on a row of its own
+   would read as an unrelated control that happened to land underneath. */
+.turn-actions { display: flex; gap: 8px; }
+/* End turn takes the row and the glyph takes a fixed square, rather than the two
+   splitting it: the rail is a fixed 320px and the label is the half that has to
+   stay readable, while the glyph is the same width whatever it sits beside. */
+.turn-actions .primary { flex: 1; }
+
+/* ">", as asked — ⏩, the closest thing to it that exists as a character. Sized
+   and padded by hand rather than by `button`'s own rule, because that rule sizes
+   a box for a word: the glyph is centred instead, and the height comes from
+   stretching to the row rather than from the padding. */
+button.hurry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  padding: 0;
+  /* An icon size, not a text size: the emoji draws its ink at roughly its own
+     em, so anything smaller reads as a speck in a 45px box. */
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* The list hangs off the buttons that act on it rather than floating between
+   them and the log: `.players` brings a 16px margin of its own from the lobby,
+   where it sits in a card with no gap to space it, and the rail's own column gap
+   already says how far apart its children go. Only the top goes — the bottom
+   keeps the margin that separates the list from the roll log below it. */
+.rail .players { margin-top: 0; }
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 19px;
+}
+
+/* ── Board ────────────────────────────────────────────────────────────────── */
+
+.territory {
+  stroke: #0b0d13;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  transition: fill .35s ease, opacity .15s;
+  cursor: pointer;
+}
+/* Impassable water. Darker than any player colour so it reads as absence
+   rather than as somebody's territory, and it never pops on hover — there is
+   nothing there to click. */
+.territory.void { fill: #10131c; stroke: #1b2130; cursor: default; }
+.territory.void:hover { stroke: #1b2130; stroke-width: 2; }
+
+.territory.mine { stroke: #ffffffbb; }
+
+/* An ally's land. Dashed where `.mine` is solid, so "on my side" never reads as
+   "mine" — the two are the same white and the difference has to come from the
+   line itself. Declared before `.hovered`, `.selected` and `.their-select` for
+   the same reason `.hovered` is: those three say something about the move being
+   made, and a standing fact about the game may not paint over them. */
+.territory.ally { stroke: #ffffff96; stroke-dasharray: 5 4; }
+
+/* The one province under the cursor (see paintHover in board.js).
+
+   This used to outline the hovered player's whole empire. A white outline round
+   twenty provinces is a second set of borders on top of the real ones and made
+   the board hardest to read exactly when it was being looked at. Marking the
+   empire is now the fade's job alone (see `.owner-fade`), which leaves this to
+   answer the much smaller question of which single field the pointer is on.
+   That matters most for your own land, where `.mine` is one uniform hairline
+   that says only "yours"; board.js draws it for an enemy's province too, but
+   only while a source is selected.
+
+   Declared ahead of .selected and .their-select on purpose: those two say
+   something about the game, and this only says where the mouse is, so it must
+   lose to both. Same specificity either way, so the order in this file is what
+   decides it — moving this rule below them would let a hover wipe out a
+   selection the rest of the table can see. */
+.territory.hovered { stroke: #fff; stroke-width: 4; }
+
+/* Everything that is not the focused player's, so the empire being looked at is
+   the only one at full strength. Neutral land fades with the rest — "everyone
+   else" is everything that is not that player.
+
+   Which player that is comes from board.js's `focusOwner`, and is set by
+   pointing at a row in the rail or clicking one of their provinces — never by
+   moving the pointer across the map, which used to make the whole board darken
+   and lighten again on every province the cursor crossed.
+
+   Declared ahead of .dim on purpose. Both set `opacity`, so the later rule wins
+   where they overlap, and they overlap on every province that is neither the
+   focused player's nor part of a live selection. A dimmed province is one the
+   selection has ruled out as a target; that verdict is about the game and has
+   to outrank where the pointer happens to be. (board.js keeps a selection's own
+   source and its legal targets out of this class entirely — CSS order cannot
+   help them, since they are not dimmed for this rule to lose to.) */
+/* `.58` is twice the darkening `.79` was: at .79 the board around the focus
+   stayed close enough in weight that the empire did not read as standing out,
+   and the contrast is the entire job of this rule. */
+.territory.owner-fade { opacity: .58; }
+
+.territory.attackable { cursor: crosshair; }
+.territory.attackable:hover { stroke: #fff; stroke-width: 5; }
+.territory.selected { stroke: #fff; stroke-width: 6; }
+.territory.dim { opacity: .38; }
+.territory.target-hit { animation: pop .5s ease; }
+
+/* Another player's selection, drawn in their colour so a shared board reads as
+   shared: you can see who is looking where, and (dashed) what they could hit
+   from there. Dashed rather than solid is the whole point — a solid outline
+   would read as somebody having already moved.
+
+   The colour is a custom property set per-element by board.js, because a
+   presentation attribute is the lowest-priority way to set `stroke` and the
+   rule below would win over it. */
+.territory.their-select {
+  stroke: var(--their-color, #fff);
+  stroke-width: 4;
+  stroke-dasharray: 7 4;
+}
+.territory.their-target {
+  stroke: var(--their-color, #fff);
+  stroke-width: 3;
+  stroke-dasharray: 2 5;
+  opacity: .75;
+}
+
+/* The two ends of an attack, so a turn reads on the map and not only in the
+   dice overlay and the log.
+
+   900ms is not a taste decision: it is the bot's own 1000ms beat minus a little
+   slack. At 1.1s each capture animation was still running when the bot's next
+   action landed, so the mark that says "this province changed hands" got cut
+   off by the move that followed it. Lengthening either one means moving
+   `BOT_DELAY_MS` in server/index.js first. */
+.territory.attacking { animation: lunge 0.9s ease; }
+.territory.captured { animation: capture 0.9s ease; }
+
+@keyframes pop {
+  0% { stroke: #fff; stroke-width: 10; }
+  100% { stroke: #fff; stroke-width: 6; }
+}
+
+/* The attacker contracts and springs out, so the eye is drawn to where the
+   move started before it lands. */
+@keyframes lunge {
+  0% { opacity: 1; }
+  22% { opacity: .45; }
+  100% { opacity: 1; }
+}
+
+/* A capture is the one thing worth looking at, so it gets the loudest mark on
+   the board: white, thick, and fading back to the province's own outline. */
+@keyframes capture {
+  0% { stroke: #fff; stroke-width: 14; }
+  55% { stroke: #fff; stroke-width: 8; }
+  100% { stroke: #fff; stroke-width: 2; }
+}
+
+/* The dice cipher, drawn straight onto the province with nothing behind it.
+   `pointer-events: none` is load-bearing rather than tidiness: the digit sits on
+   top of the polygon, so without it the number would swallow the hover that
+   outlines the empire and the click that selects the province.
+
+   The size arrives as a custom property, for the same reason `.their-select`
+   takes its colour as one: a presentation attribute is the lowest-priority way
+   to set a property, so the per-board `font-size` board.js used to set on the
+   element lost to the `font` shorthand that used to be here. Every board drew
+   at 30px whatever its density. Setting it through a custom property is what
+   makes the per-board size actually take effect. */
+.badge { pointer-events: none; }
+.badge text {
+  fill: #000;
+  font-family: system-ui, sans-serif;
+  font-weight: 700;
+  font-size: var(--cipher-size, 30px);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+/* Board is inert while it isn't your turn — but never hidden, so you can read it. */
+.board-wrap.inert .territory { cursor: default; }
+
+/* ── Dice panel ───────────────────────────────────────────────────────────── */
+
+/* Sits in the rail under the roll log, in the flow rather than over the board:
+   nothing floats over the map any more, and the panel's height is its own
+   business instead of something the board has to leave room for. */
+/* Dice, inline in a log line. Only the newest line draws them (see `rollsRow`
+   in ui.js); older lines print `[3,5]` instead, which is the same fact in a
+   fifth of the width. `inline-flex` because these sit in the middle of a
+   sentence, next to the arrow and the sums. */
+.dice-rolls {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+  flex-wrap: wrap;
+}
+.die {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: #f7f9ff;
+  color: #111;
+  font: 700 12px system-ui, sans-serif;
+  display: grid;
+  place-items: center;
+}
+
+/* ── Roll log ─────────────────────────────────────────────────────────────── */
+
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.log li {
+  padding: 5px 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  background: var(--panel-2);
+  word-break: break-word;
+}
+.log .who { color: #dfe4f0; font-weight: 700; }
+.log .rolls { color: #9db8ff; }
+.log .sum { font-weight: 700; }
+.log .win { color: var(--ok); font-weight: 700; }
+.log .lose { color: var(--danger); font-weight: 700; }
+.log .rein { color: #e5c07b; font-weight: 700; }
+
+/* ── Overlays ─────────────────────────────────────────────────────────────── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(9, 11, 16, .82);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.overlay-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px 32px;
+  text-align: center;
+  max-width: 420px;
+}
+.overlay-card h2 { margin: 0 0 6px; font-size: 20px; color: var(--text); }
+.overlay-card p { margin: 0 0 4px; }
+#winner-swatch { margin: 0 auto 14px; }
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  margin: 0 auto 14px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Toasts ───────────────────────────────────────────────────────────────── */
+
+.toasts {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  animation: rise .18s ease;
+}
+.toast.error { border-color: #6b2f2b; color: #f5a49d; }
+.toast.info { color: #c8ccd8; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }

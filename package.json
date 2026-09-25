@@ -1,0 +1,20 @@
+{
+  "name": "dicevibe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multiplayer Dice Wars clone — open-games lobby, randomly generated maps, bots, turn-based territory conquest.",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "d3-delaunay": "^6.0.4",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}
