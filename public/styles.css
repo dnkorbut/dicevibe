@@ -531,6 +531,14 @@ button.hurry {
   padding: 28px 32px;
   text-align: center;
   max-width: 420px;
+  /* The overlay centres its card and has no scroll of its own, so a card taller
+     than the window loses both ends with no way to reach them — and the rules
+     card is tall enough to do exactly that in a short window, taking its own
+     "Got it" button off the bottom. The subtraction is the overlay's padding,
+     top and bottom. The other two cards are a heading and a sentence and are
+     unaffected; this is here for the one that grows. */
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 .overlay-card h2 { margin: 0 0 6px; font-size: 20px; color: var(--text); }
 .overlay-card p { margin: 0 0 4px; }
@@ -557,9 +565,25 @@ button.help {
 }
 
 /* The card centres its text, which is right for one sentence and wrong for a
-   list: centred bullets read as a shape rather than as sentences. */
-.overlay-card.rules { text-align: left; max-width: 480px; }
-.rules-list { margin: 12px 0 20px; padding-left: 18px; }
+   list: centred bullets read as a shape rather than as sentences.
+
+   A column with the list as its only scrolling part, so the heading and the
+   "Got it" button stay put in a window too short for the whole thing. Scrolling
+   the card as a whole would keep the rules reachable but put the only visible
+   way out below the fold, which is the same complaint one level down. */
+.overlay-card.rules {
+  text-align: left;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rules-list {
+  margin: 12px 0 20px;
+  padding-left: 18px;
+  overflow-y: auto;
+  min-height: 0;
+}
 .rules-list li {
   margin-bottom: 10px;
   color: var(--muted);
