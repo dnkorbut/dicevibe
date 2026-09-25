@@ -227,6 +227,12 @@ style are different maps. Three more presets are generated and tested but kept
 off the menu — *Highlands*, *Archipelago* and *Frontier* — and you can look at any
 of them at `/dev/map?preset=frontier`.
 
+That preview generates a board synchronously, so it is deliberately not
+unbounded: no boards over 400 provinces, and ten at a time with two a second
+after that, past which it answers `429`. It is a page for eyeballing geometry,
+not an API — the limits are there so a request nobody meant to make cannot stall
+every game in the process.
+
 ## Configuration
 
 Every knob is an environment variable, and the defaults are what you get from a

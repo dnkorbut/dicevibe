@@ -132,11 +132,19 @@ const MAX_VOID_FRACTION = 0.6;
  * cost is paid synchronously, so nothing else runs while it is paid.
  *
  * The largest board the game itself can ask for is 150 (`huge`), and the only
- * other way in is the `DICEVIBE_TERRITORIES` debugging knob, so this sits far
- * past anything legitimate: it is a bound on what a bug or an attacker can ask
- * for, not a limit anyone will meet on purpose.
+ * other way in is the `DICEVIBE_TERRITORIES` debugging knob, which exists to
+ * make games *shorter* — so this sits past anything legitimate without being
+ * arbitrarily far past it.
+ *
+ * What this bound buys, measured: a board of 150 costs about 17ms and one of
+ * 400 about 27ms, so below the cap the cost is mostly fixed overhead rather
+ * than cells — which means the cap alone is *not* what makes the route safe,
+ * it only keeps the worst case from being minutes long. Bounding the rate is
+ * the half that actually does the work, and it lives in
+ * `server/ratelimit.js`. The two answer different questions and neither is
+ * sufficient alone.
  */
-const MAX_TERRITORIES = 2000;
+const MAX_TERRITORIES = 400;
 
 /** Fixed geometry seed. Override to explore alternative continents. */
 function mapSeed() {

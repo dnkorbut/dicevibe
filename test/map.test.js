@@ -736,16 +736,20 @@ test('generateMap rejects a board too large to be asked for', () => {
   // The time assertion is a couple of orders of magnitude of headroom on a
   // check that is two comparisons, so it cannot flake on a loaded machine — it
   // fails only if the bound stops being checked before the work.
+  //
+  // The route is also rate-limited (see test/ratelimit.test.js), and the two
+  // halves answer different questions: this bounds what one request costs, that
+  // bounds how often one can be made. Neither is sufficient alone.
   const started = process.hrtime.bigint();
-  assert.throws(() => generateMap({ territoryCount: 2001 }), /territoryCount must be <= 2000/);
-  assert.throws(() => generateMap({ territoryCount: 300000 }), /territoryCount must be <= 2000/);
-  assert.throws(() => generateMap({ territoryCount: Number.MAX_SAFE_INTEGER }), /must be <= 2000/);
+  assert.throws(() => generateMap({ territoryCount: 401 }), /territoryCount must be <= 400/);
+  assert.throws(() => generateMap({ territoryCount: 300000 }), /territoryCount must be <= 400/);
+  assert.throws(() => generateMap({ territoryCount: Number.MAX_SAFE_INTEGER }), /must be <= 400/);
   const ms = Number(process.hrtime.bigint() - started) / 1e6;
   assert.ok(ms < 250, `the bound must be checked before any work, took ${ms.toFixed(0)}ms`);
 
   // And the bound sits above every board the game itself can ask for, so it is
   // invisible in play: 150 is `huge`, the largest size on the menu.
-  assert.doesNotThrow(() => generateMap({ preset: 'ridge', territoryCount: 2000, seed: 1 }));
+  assert.doesNotThrow(() => generateMap({ preset: 'ridge', territoryCount: 400, seed: 1 }));
 });
 
 test('generateMap refuses to hand back a board with too little land', () => {

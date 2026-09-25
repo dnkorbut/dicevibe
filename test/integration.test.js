@@ -1816,14 +1816,14 @@ test('/dev/map refuses an unbounded board instead of generating one', async () =
   // denial-of-service test, not a validation one. The timings are the point:
   // the refusal has to come before any work, because a bound checked afterwards
   // would still let the whole event loop be blocked, just before apologising.
-  for (const t of ['2001', '300000', '999999999']) {
+  for (const t of ['401', '300000', '999999999']) {
     const started = Date.now();
     const res = await fetch(`${url}/dev/map?t=${t}`);
     const body = await res.text();
     const ms = Date.now() - started;
 
     assert.equal(res.status, 400, `t=${t} must be refused`);
-    assert.match(body, /territoryCount must be <= 2000/, `t=${t} refusal body`);
+    assert.match(body, /territoryCount must be <= 400/, `t=${t} refusal body`);
     assert.ok(ms < 2000, `t=${t} took ${ms}ms — the bound is being checked too late`);
   }
 
@@ -1855,7 +1855,7 @@ test('/dev/map answers its errors as text, never as executable markup', async ()
   // The same for the generation-failure path. It only ever echoes a number —
   // `territoryCount must be <= 2000, got 2001` — but it is the same `res.send`
   // and the same reasoning, so it takes the same type.
-  const other = await fetch(`${url}/dev/map?t=2001`);
+  const other = await fetch(`${url}/dev/map?t=401`);
   assert.equal(other.status, 400);
   assert.match(other.headers.get('content-type') ?? '', /^text\/plain/);
 
@@ -1871,4 +1871,60 @@ test('the game page is served with the framing and sniffing headers', async () =
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(res.headers.get('x-frame-options'), 'DENY');
+});
+
+test('the map preview route refuses a flood instead of generating every board', async () => {
+  // Its own server: the bucket is process-wide and this test drains it, so
+  // sharing the suite's server would spend the budget the other /dev/map tests
+  // need and their failures would look nothing like this one.
+  //
+  // The bucket is the second half of the denial-of-service fix, and it answers a
+  // different question from the size bound. Bounding how big a board can be does
+  // not bound how many can be asked for, and generation is synchronous — so the
+  // only thing between one connection and a stalled event loop is the rate.
+  const port = await freePort();
+  const proc = spawn(process.execPath, ['server/index.js'], {
+    cwd: ROOT,
+    env: { ...process.env, PORT: String(port), DICEVIBE_MAP_SEED: '4242' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  proc.stdout.resume();
+  proc.stderr.on('data', (buf) => process.stderr.write(`[preview] ${buf}`));
+
+  try {
+    await waitForHealth(port, proc);
+    const target = `http://127.0.0.1:${port}`;
+
+    // Concurrent, which is the shape that matters: a burst is what a hand on a
+    // scroll wheel produces and also what an attacker sends.
+    const burst = await Promise.all(
+      Array.from({ length: 30 }, () => fetch(`${target}/dev/map?t=40`)),
+    );
+    const codes = burst.map((r) => r.status);
+    await Promise.all(burst.map((r) => r.text())); // Drain, so no socket is left hanging.
+
+    assert.ok(codes.includes(200), 'the bucket must let a real burst through first');
+    assert.ok(
+      codes.filter((c) => c === 429).length >= 15,
+      `most of a 30-request flood must be refused; got ${JSON.stringify(codes)}`,
+    );
+
+    // A refusal has to be a plain answer — not a hang, and not a queue. Queueing
+    // is the tempting alternative and the wrong one: it would move the stall
+    // from the caller who asked onto everyone waiting behind them.
+    const refused = burst[codes.indexOf(429)];
+    assert.match(refused.headers.get('content-type') ?? '', /^text\/plain/);
+    assert.ok(refused.headers.get('retry-after'), 'a refusal should say when to come back');
+
+    // And the process is free again the moment the flood is refused.
+    const started = Date.now();
+    assert.equal((await fetch(`${target}/healthz`)).ok, true);
+    assert.ok(Date.now() - started < 1000, 'the event loop must not be left blocked');
+  } finally {
+    proc.kill('SIGTERM');
+    await new Promise((resolve) => {
+      proc.once('exit', resolve);
+      setTimeout(resolve, 2000);
+    });
+  }
 });

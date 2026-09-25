@@ -32,6 +32,7 @@ import {
   mapCatalogue,
   playableCount,
 } from './map.js';
+import { createBucket } from './ratelimit.js';
 import {
   addBot,
   buildSnapshot,
@@ -104,6 +105,24 @@ app.get('/api/maps', (_req, res) => res.json(mapCatalogue()));
 /* -------------------------------------------------------------------------- */
 
 /**
+ * The budget for the preview route: ten boards in a burst, refilling at two a
+ * second.
+ *
+ * The burst is the size it is because ten is what a hand on a scroll wheel or a
+ * rapid refresh looks like, and a bucket smaller than a real gesture is a bucket
+ * that refuses real people.
+ *
+ * The refill is the part that does the work. A board costs tens of milliseconds
+ * (measured: about 27ms at the size cap), so two a second settles at roughly one
+ * part in twenty of one core however hard the route is hammered — where before
+ * this existed, one connection alone could spend all of it and the burst bought
+ * nothing. What is left is honest and not zero: draining the bucket costs about
+ * a quarter of a second of stutter, once, and then the rate holds. See
+ * server/ratelimit.js for why the route needs this at all.
+ */
+const devMapBudget = createBucket({ capacity: 10, refillPerMs: 1 / 500 });
+
+/**
  * Renders a board as standalone SVG, for eyeballing map generation without
  * going through the lobby. Hovering a province outlines its neighbours, which
  * is the fastest way to confirm the adjacency graph is sane.
@@ -141,6 +160,16 @@ app.get('/dev/map', (req, res) => {
   // geometry, so an unrecognised one falls back to the style rather than
   // refusing the page. `?size=huge` is the quickest way to look at a dense board.
   const size = typeof req.query.size === 'string' && mapSize(req.query.size) ? req.query.size : null;
+
+  // Charged here rather than at the top of the handler, so a caller who asked
+  // for something malformed still gets its error message: a 400 costs nothing
+  // and refusing it would turn a typo into a rate limit. It is spent only on
+  // the requests that actually generate a board.
+  if (!devMapBudget()) {
+    res.set('Retry-After', '1').status(429).type('text/plain');
+    res.send('too many map previews; slow down\n');
+    return;
+  }
 
   let map;
   try {
