@@ -28,6 +28,13 @@ export const endTurnBtn = $('btn-end-turn');
 export const hurryBtn = $('btn-hurry');
 export const abandonBtn = $('btn-abandon');
 
+// The rules popup's two ways in, its way out, and the panel itself — which the
+// wiring needs so a click on the backdrop around the card can close it.
+export const rulesBtn = $('btn-rules');
+export const rulesMenuBtn = $('btn-rules-menu');
+export const rulesOverlay = $('overlay-rules');
+export const closeRulesBtn = $('btn-rules-close');
+
 const MAX_LOG = 12;
 
 /**
@@ -369,16 +376,26 @@ export function updateWaiting(state, myId) {
 }
 
 /**
- * Hides both modal overlays.
+ * Hides every modal overlay.
  *
  * `updateWaiting`/`updateGameOver` are only ever called from `renderGame`, so
  * leaving a game leaves whichever overlay was last shown still covering the
  * screen — the game-over panel would sit on top of the menu, swallowing every
  * click. Anything that tears a game down has to call this.
+ *
+ * The rules panel is the one overlay with no snapshot behind it, so nothing
+ * would ever put it away on its own: opened mid-game and then abandoned, it
+ * would cover the menu with the board already gone. It comes down here for the
+ * same reason as the other two, not because it is in the same state.
  */
 export function clearOverlays() {
   waitingOverlay.hidden = true;
   gameOverOverlay.hidden = true;
+  rulesOverlay.hidden = true;
+}
+
+export function setRulesOpen(open) {
+  rulesOverlay.hidden = !open;
 }
 
 export function updateGameOver(state, myId) {

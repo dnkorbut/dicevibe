@@ -48,6 +48,10 @@
       </div>
     </div>
 
+    <div class="actions">
+      <button id="btn-rules-menu" class="ghost wide">How to play</button>
+    </div>
+
     <p id="menu-error" class="error" hidden></p>
   </div>
 </section>
@@ -75,6 +79,7 @@
 <section id="screen-game" class="screen">
   <div class="game-layout">
     <div class="board-wrap">
+      <button id="btn-rules" class="ghost help" title="How to play" aria-label="How to play">?</button>
       <svg id="board" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
 
@@ -111,6 +116,29 @@
     <h2 id="winner-title">Winner</h2>
     <p class="muted">Every province is theirs.</p>
     <button id="btn-again" class="primary">Back to menu</button>
+  </div>
+</div>
+
+<!-- Static, and the one overlay with nothing to keep in step with the game: it
+     can be read at any point, from the menu or mid-turn, so it is never driven
+     by a snapshot. -->
+<div id="overlay-rules" class="overlay" hidden>
+  <div class="overlay-card rules">
+    <h2>How to play</h2>
+    <ul class="rules-list">
+      <li><strong>Attacking throws one die fewer than the province holds.</strong>
+        The die that stays home doesn't fight, so a 5-stack attacks with 4 — while
+        the defender throws their whole stack. That is why attacking an equal
+        stack is a losing bet.</li>
+      <li><strong>Highest total wins, and ties go to the defender.</strong> Win and
+        you take the province and its dice; lose and your stack collapses to 1.</li>
+      <li><strong>End turn</strong> pays one die for every province you own, placed
+        where you need it most.</li>
+      <li><strong>Eight dice is the cap</strong> on any one province.</li>
+      <li><strong>The last player with land wins.</strong> Neutral land never
+        attacks, but it grows — the longer you take, the harder it gets.</li>
+    </ul>
+    <button id="btn-rules-close" class="primary wide">Got it</button>
   </div>
 </div>
 

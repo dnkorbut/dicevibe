@@ -536,6 +536,43 @@ button.hurry {
 .overlay-card p { margin: 0 0 4px; }
 #winner-swatch { margin: 0 auto 14px; }
 
+/* ── Rules popup ──────────────────────────────────────────────────────────── */
+
+/* The "?" that opens it from the board. Absolute, because `.board-wrap` is a
+   flex row: a button left in the flow would take a share of the width the
+   letterboxed map is centred in and push the map off centre. */
+button.help {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+/* The card centres its text, which is right for one sentence and wrong for a
+   list: centred bullets read as a shape rather than as sentences. */
+.overlay-card.rules { text-align: left; max-width: 480px; }
+.rules-list { margin: 12px 0 20px; padding-left: 18px; }
+.rules-list li {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* The bold half is a heading and the rest is its sentence, so the rules are
+   scannable in a panel that is only ever glanced at. A block rather than an
+   inline run, because the two would otherwise wrap into each other and the
+   bullets would read as one paragraph with random bold in it. */
+.rules-list li strong { display: block; color: var(--text); }
+
 .spinner {
   width: 22px;
   height: 22px;

@@ -534,6 +534,33 @@ ui.initRail({
 });
 
 /**
+ * The rules popup: two ways in — the menu's link, and the "?" on the board for
+ * a player who is mid-game and has forgotten what a stack throws — and three
+ * ways out. The extra exits are not padding: this panel covers the board, so a
+ * player who opens it during their own turn and then cannot find the one button
+ * that dismisses it has lost the turn to it.
+ *
+ * Nothing here touches the game. It is static text in the markup, opened and
+ * closed locally, with no snapshot and no event — which is also why it is the
+ * one overlay `clearOverlays` has to close by hand.
+ */
+for (const btn of [ui.rulesBtn, ui.rulesMenuBtn]) {
+  btn.addEventListener('click', () => ui.setRulesOpen(true));
+}
+
+ui.closeRulesBtn.addEventListener('click', () => ui.setRulesOpen(false));
+
+// The card is a child of the overlay, so a click that lands on the card and
+// bubbles this far is a click inside, not outside it.
+ui.rulesOverlay.addEventListener('click', (e) => {
+  if (e.target === ui.rulesOverlay) ui.setRulesOpen(false);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') ui.setRulesOpen(false);
+});
+
+/**
  * Puts the frame away: the pointer is on the map.
  *
  * That is the whole of what the frame asks for — it is there to send the eye to

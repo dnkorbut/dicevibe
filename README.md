@@ -102,6 +102,9 @@ neither the test files nor `socket.io-client` in it.
 
 ## How to play
 
+A short version of all of this is in the game itself: **How to play** on the
+menu, and the **?** in the corner of the board once a game has started.
+
 1. **Name yourself** (optional) and press **Create game**. Pick a map style and a
    size — or leave the size on *Style default*.
 2. **Everyone else joins** from the same page: your game appears under *Open
