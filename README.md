@@ -71,18 +71,24 @@ runtime — the commands below are the only difference.
 
 ```bash
 docker build -t dicevibe .
-docker run --rm -p 3000:3000 dicevibe
+docker run --rm -p 8888:8888 dicevibe
 ```
 
-Then open **http://localhost:3000**, exactly as if you had run `npm start`.
+Then open **http://localhost:8888**, exactly as if you had run `npm start`.
 
-- **The port.** The container listens on 3000; `-p 8080:3000` puts it on 8080 of
-  your machine. To move the port inside the container as well:
-  `docker run --rm -e PORT=8080 -p 8080:8080 dicevibe`.
+- **The port.** The container listens on **8888**, because the image sets `PORT`
+  for itself. That is the one thing that differs from running it on the host,
+  where the server's own default of 3000 still applies — the image overrides the
+  setting rather than changing the default, so `npm start` is unaffected.
+  `-p 8080:8888` puts the game on 8080 of your machine. To move the port inside
+  the container as well: `docker run --rm -e PORT=8080 -p 8080:8080 dicevibe`.
+- **`EXPOSE` publishes nothing.** It is a note to whoever reads the image, and a
+  container listening on 8888 can be published on any port you like — `-p` on
+  `docker run` is the only thing that decides that.
 - **Every other setting is an environment variable**, the same ones as on the
-  host: `docker run --rm -e DICEVIBE_BOT_DELAY_MS=0 -p 3000:3000 dicevibe`.
-- **Playing with others.** `-p 3000:3000` publishes on every interface, so
-  anyone on your network joins at `http://<your-ip>:3000` — the container changes
+  host: `docker run --rm -e DICEVIBE_BOT_DELAY_MS=0 -p 8888:8888 dicevibe`.
+- **Playing with others.** `-p 8888:8888` publishes on every interface, so
+  anyone on your network joins at `http://<your-ip>:8888` — the container changes
   nothing about that.
 - **Stopping it.** `docker stop` ends the game at once. Rooms live in memory,
   nothing is written to disk, and the server handles SIGTERM rather than making
@@ -240,7 +246,7 @@ plain `npm start`:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `PORT` | `3000` | Port to listen on. |
+| `PORT` | `3000` | Port to listen on. The container image sets `8888` for itself; everything else is unchanged. |
 | `DICEVIBE_BOT_DELAY_MS` | `1000` | How long a bot "thinks" between beats. `0` makes it instant. |
 | `DICEVIBE_ROOM_SEED` | random | Pins every room's dice and board, so a game replays exactly. |
 | `DICEVIBE_MAP_SEED` | `20260923` | Fixed geometry seed for the dev map preview. |
@@ -270,7 +276,7 @@ plain `npm start`:
 npm test
 ```
 
-259 tests, run by `node --test` with no test framework:
+271 tests, run by `node --test` with no test framework:
 
 - **Rules** — attack resolution, reinforcement placement, elimination and the win
   check, including Monte Carlo checks on the dice maths.
