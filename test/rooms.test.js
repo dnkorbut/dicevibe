@@ -26,6 +26,9 @@ import {
   rooms,
   sessions,
 } from '../server/rooms.js';
+import { planMove as planMoveV2 } from '../server/bot-v2.js';
+import { BOT_VERSIONS, policyFor } from '../server/bots.js';
+import { makeRng } from '../server/rng.js';
 
 /* ── helpers ───────────────────────────────────────────────────────────────── */
 
@@ -45,16 +48,79 @@ const seatOf = (room, id) => room.players.find((p) => p.id === id);
 
 /* ── bot seats ─────────────────────────────────────────────────────────────── */
 
-test('bots are named in sequence and never reuse a taken name', () => {
+test('bots are named per policy version and never reuse a taken name', () => {
   const room = makeRoom();
 
-  assert.equal(addBot(room).player.name, 'Bot 1');
-  assert.equal(addBot(room).player.name, 'Bot 2');
+  // Seated explicitly rather than left to the draw, because the numbering rule is
+  // what is under test and a random version would make the expected names move.
+  assert.equal(addBot(room, 1).player.name, 'v1 1');
+  assert.equal(addBot(room, 1).player.name, 'v1 2');
+  assert.equal(addBot(room, 2).player.name, 'v2 1');
 
-  // A human who has claimed the next bot name pushes the allocation past it,
-  // which is the same rule anonymous humans get.
-  joinRoom({ code: room.code, nickname: 'Bot 3', socketId: 'sock-9' });
-  assert.equal(addBot(room).player.name, 'Bot 4');
+  // The counters are per version, and a human who has claimed a bot's next name
+  // pushes the allocation past it — the same rule anonymous humans get.
+  joinRoom({ code: room.code, nickname: 'v1 3', socketId: 'sock-9' });
+  assert.equal(addBot(room, 1).player.name, 'v1 4');
+  assert.equal(addBot(room, 2).player.name, 'v2 2');
+});
+
+test('an unversioned bot takes its version from the room, and carries it', () => {
+  // Stubbed rather than sampled. Which version a real draw produces is a coin
+  // toss, so asserting on it would be asserting on the seed — what matters is
+  // that the draw is *consulted* and that the seat records the answer, because
+  // the driver reads `botVersion` back off the player on every beat. A seat that
+  // kept the default would play v1 whatever was drawn for it.
+  const room = makeRoom();
+  let stubbed = 2;
+  room.botRng.pick = (arr) => (arr.includes(stubbed) ? stubbed : arr[0]);
+
+  const first = addBot(room).player;
+  assert.equal(first.botVersion, 2);
+  assert.equal(first.name, 'v2 1');
+
+  stubbed = 1;
+  const second = addBot(room).player;
+  assert.equal(second.botVersion, 1);
+  assert.equal(second.name, 'v1 1', 'and the counter is per version, not per table');
+});
+
+test('every version "Add bot" can deal has a policy behind it', () => {
+  // The list is what the draw samples and the map is what plays the seat, and
+  // nothing else connects them — a version added to one and not the other would
+  // seat a bot that silently plays the fallback.
+  for (const version of BOT_VERSIONS) {
+    assert.equal(typeof policyFor(version).planMove, 'function', `v${version} has no planMove`);
+    assert.equal(typeof policyFor(version).planAlliance, 'function', `v${version} has no planAlliance`);
+  }
+});
+
+test('adding a bot does not disturb the dice stream', () => {
+  // The reason `botRng` is a separate stream at all. A draw taken from `room.rng`
+  // would shift every roll after it, and "Isles, seed 12345" is supposed to
+  // describe the game rather than the order the seats were filled in — so the
+  // seed would stop being a complete description of a reproducible board the
+  // moment somebody clicked Add bot.
+  const quiet = makeRoom();
+  const busy = makeRoom('bob', 'ridge');
+  quiet.rng = makeRng(20260925);
+  busy.rng = makeRng(20260925);
+
+  for (let i = 0; i < 3; i++) addBot(busy);
+
+  const roll = (room) => [room.rng.next(), room.rng.next(), room.rng.next()];
+  assert.deepEqual(roll(busy), roll(quiet), 'the dice stream moved when a bot was seated');
+});
+
+test('a bot is named after the version it was seated with, not the one drawn', () => {
+  // Guards the wiring between the two: `nextBotName` takes the version as an
+  // argument, so passing the drawn one to the seat and the default one to the
+  // name would be invisible until a table had both.
+  const room = makeRoom();
+  const bot = addBot(room, 2).player;
+
+  assert.equal(bot.botVersion, 2);
+  assert.match(bot.name, /^v2 /);
+  assert.equal(policyFor(2).planMove, planMoveV2, 'and v2 is the policy it will play');
 });
 
 test('a bot seat is connected from birth and holds no session', () => {

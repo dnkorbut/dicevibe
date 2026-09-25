@@ -1,14 +1,26 @@
-// The bot's move policy.
+// Bot v1: the move policy the project shipped with, kept as it was.
 //
 // Deliberately pure: it reads a board and returns a move, and it is the only
-// thing in the project that decides what a machine does. Keeping the decision
-// out of the driver means the interesting part — whether the bot plays well —
-// is unit-testable against hand-built boards with no server, no timers and no
+// thing in this file that decides what a machine does. Keeping the decision out
+// of the driver means the interesting part — whether the bot plays well — is
+// unit-testable against hand-built boards with no server, no timers and no
 // randomness involved.
 //
 // The policy is "ruthless": maximise raw expected value with no risk aversion,
 // and attack whenever that value is positive. That is a deliberate choice, not
 // a default — the reasoning is in the EV derivation below.
+//
+// **It is now one of two, and not measurably the weaker one.** `server/bot-v2.js`
+// plans a whole turn and values the position rather than the single roll, and it
+// is the better-argued policy — but over 3000 heads-up games it wins 51.2% and
+// over 800 four-player games it wins 48.4%, neither interval excluding 50. So the
+// honest status of this file is not "the old one that lost", it is "the simple one
+// that turned out to be about as hard to beat", and `tools/bot-arena.js` is the
+// thing that says so rather than the thing that was hoped to say otherwise.
+//
+// Keeping v1 unmodified is what makes that measurement mean anything: the moment
+// it is tuned to flatter v2, or to lose to it less, the comparison stops being
+// between two policies and starts being between a policy and a straw man.
 
 import { MAX_DICE, NEUTRAL } from '../shared/constants.js';
 import { attackRolls, leaderOf, leads, standings, winChance } from '../shared/rules.js';
@@ -25,6 +37,21 @@ import { attackRolls, leaderOf, leads, standings, winChance } from '../shared/ru
  *
  *     V  = M + 1
  *     EV = p * V − (1 − p) * (N − 1)
+ *
+ * **The M in that first line is wrong, and this paragraph is left standing
+ * because deleting it would hide why the policy plays the way it does.** Those M
+ * dice are *destroyed* — a capture takes the land and not the stack, the same
+ * thing the rules say out loud — so nothing ever receives them, and crediting a
+ * win with them is crediting dice that cease to exist. The honest payoff of a win
+ * is the territory alone. The consequence is not small: at a territory worth 1,
+ * `EV > 0` stops meaning `N > M` and starts meaning `p > (N − 1) / N`, which
+ * declines 8-against-6, 7-against-5 and 6-against-4 — all of which this policy
+ * takes. See gap 1 in `server/bot-v2.js` for the arithmetic.
+ *
+ * Nothing below is changed by knowing this, and that is deliberate: this file is
+ * the fixed opponent the arena measures against, and a bug found and then quietly
+ * patched here would destroy the only baseline the project has. Correcting it is
+ * what v2 is.
  *
  * The territory is worth 1 on top of the M dice because every province pays one
  * reinforcement a turn, so taking one is worth a die a turn for the rest of the

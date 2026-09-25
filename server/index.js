@@ -16,12 +16,13 @@ import {
 } from '../shared/constants.js';
 import {
   allySetOf,
+  applyAlliance,
   breakAlliance,
   inboundRequests,
   requestAlliance,
   respondAlliance,
 } from './alliances.js';
-import { planAlliance, planMove } from './bot.js';
+import { policyFor } from './bots.js';
 import { attack, endTurn, selectTerritory, startGame } from './game.js';
 import {
   DEFAULT_MAP_ID,
@@ -355,14 +356,18 @@ function scheduleBot(room) {
  * turned into an end-of-turn instead of being retried, so a policy bug cannot
  * spin here either.
  *
- * The one case where the policy would otherwise stall is two provinces both at
+ * The one case where a policy would otherwise stall is two provinces both at
  * MAX_DICE: no attack can ever be profitable and no reinforcement can change the
- * board, so `planMove` takes the attack anyway rather than declining forever.
- * That is what keeps the "terminates" claim above honest — see the exception in
- * `server/bot.js`. It is still not an infinite loop if that clause is removed:
+ * board, so the attack is taken anyway rather than declining forever. That is
+ * what keeps the "terminates" claim above honest — see the exception in
+ * `server/bot-v1.js`. It is still not an infinite loop if that clause is removed:
  * the bot ends its turn and the game simply never finishes, which is far harder
  * to notice, and is why `test/game.test.js` drives a whole bot-vs-passive game
  * rather than checking a single move.
+ *
+ * v2 answers "is there a move worth making" with a search rather than a formula,
+ * but it inherits that clause through the floor at the end of its `planMove`, so
+ * this argument covers every version and does not need restating per policy.
  */
 function stepBot(room) {
   room.botTimer = null;
@@ -375,9 +380,14 @@ function stepBot(room) {
   const player = room.players[room.game.turnIndex];
   if (!player?.isBot) return;
 
+  // Which policy this seat plays. Read once per beat rather than cached on the
+  // room, so a seat's version is the only thing that decides its behaviour and
+  // there is no second copy of it to drift.
+  const policy = policyFor(player.botVersion);
+
   // Diplomacy first, and at most one action per tick — see `planAlliance` for
   // why the alliance and the move are never made in the same beat.
-  const action = planAlliance(room.game.board, room.game.adjacency, player.id, {
+  const action = policy.planAlliance(room.game.board, room.game.adjacency, player.id, {
     allies: player.allies,
     requested: player.requested,
     askedThisTurn: player.askedThisTurn,
@@ -397,7 +407,7 @@ function stepBot(room) {
     }
   }
 
-  const move = planMove(room.game.board, room.game.adjacency, player.id, allySetOf(player));
+  const move = policy.planMove(room.game.board, room.game.adjacency, player.id, allySetOf(player));
   const result = move ? attack(room, player.id, move.from, move.to) : endTurn(room, player.id);
 
   if (!result.ok) {
@@ -458,20 +468,6 @@ function hurryBot(room) {
   }
 
   console.error(`[bot] ${botId} did not finish its turn within ${MAX_HURRY_BEATS} beats`);
-}
-
-/** Turns one `planAlliance` action into the transition that carries it out. */
-function applyAlliance(room, playerId, action) {
-  switch (action.action) {
-    case 'accept':
-      return respondAlliance(room, playerId, action.playerId, true);
-    case 'decline':
-      return respondAlliance(room, playerId, action.playerId, false);
-    case 'break':
-      return breakAlliance(room, playerId, action.playerId);
-    default:
-      return requestAlliance(room, playerId, action.playerId);
-  }
 }
 
 /**

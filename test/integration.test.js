@@ -1379,7 +1379,9 @@ test('the host can add a bot, and a bot counts as a second player', async () => 
   const seated = await host.waitFor((s) => s.players.length === 2, 'the bot seat');
   const bot = seated.players.find((p) => p.isBot);
   assert.ok(bot, 'the seat must be flagged as a bot');
-  assert.equal(bot.name, 'Bot 1');
+  // `v1 1` or `v2 1`: the version is drawn, so the first number is either, but
+  // the seat is the first of its version at the table and the name must say so.
+  assert.match(bot.name, /^v[12] 1$/, `unexpected bot name: ${bot.name}`);
   assert.equal(bot.connected, true, 'a bot is connected from birth — it has no socket to lose');
   assert.equal(bot.isHost, false, 'the bot must not be the host');
   assert.equal(seated.hostId, host.playerId);

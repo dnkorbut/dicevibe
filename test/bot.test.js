@@ -11,7 +11,7 @@ import test from 'node:test';
 
 import { MAX_DICE, NEUTRAL } from '../shared/constants.js';
 import { leaderOf } from '../shared/rules.js';
-import { moveValue, planAlliance, planMove } from '../server/bot.js';
+import { moveValue, planAlliance, planMove } from '../server/bot-v1.js';
 
 /* ── helpers ───────────────────────────────────────────────────────────────── */
 

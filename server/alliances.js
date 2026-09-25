@@ -235,3 +235,30 @@ export function dissolveFor(room, playerId) {
     }
   }
 }
+
+/**
+ * Applies the one action a policy asked for, and reports whatever the transition
+ * said.
+ *
+ * The translation from a policy's verb to a transition, and it lives here rather
+ * than beside the driver because two callers need it — the server's bot tick and
+ * `tools/bot-arena.js`, which plays policies against each other with no sockets
+ * involved. One copy means the arena exercises the same dispatch the server does,
+ * which is the only reason its results describe the shipped game.
+ *
+ * The default arm is the request, so a policy that invents a verb gets a refusal
+ * from `requestAlliance` — the target check is there — rather than a silent
+ * nothing.
+ */
+export function applyAlliance(room, playerId, action) {
+  switch (action.action) {
+    case 'accept':
+      return respondAlliance(room, playerId, action.playerId, true);
+    case 'decline':
+      return respondAlliance(room, playerId, action.playerId, false);
+    case 'break':
+      return breakAlliance(room, playerId, action.playerId);
+    default:
+      return requestAlliance(room, playerId, action.playerId);
+  }
+}

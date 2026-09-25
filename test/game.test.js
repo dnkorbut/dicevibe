@@ -11,7 +11,7 @@ import test from 'node:test';
 import { MAX_DICE, MAX_PLAYERS, NEUTRAL, PALETTE, PHASE } from '../shared/constants.js';
 import { isAllied, requestAlliance, respondAlliance } from '../server/alliances.js';
 import { attack, endTurn, startGame } from '../server/game.js';
-import { planMove } from '../server/bot.js';
+import { planMove } from '../server/bot-v1.js';
 import { createRoom, deleteRoom, joinRoom } from '../server/rooms.js';
 
 /* ── helpers ───────────────────────────────────────────────────────────────── */

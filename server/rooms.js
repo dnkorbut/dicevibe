@@ -20,6 +20,7 @@ import {
 } from '../shared/constants.js';
 import { leaderOf, territoryCount } from '../shared/rules.js';
 import { dissolveFor } from './alliances.js';
+import { BOT_VERSIONS, versionTag } from './bots.js';
 import { MAPS, isKnownMap } from './map.js';
 import { makeRng, randomSeed } from './rng.js';
 
@@ -46,11 +47,21 @@ export function normalizeName(raw) {
  * and needs no bot-specific handling, and since `startGame` counts seats rather
  * than humans, "one human plus one bot" is a legal game with no rule change.
  */
-export function addBot(room) {
+export function addBot(room, version = null) {
   if (room.phase !== PHASE.LOBBY) return { error: ERR.GAME_IN_PROGRESS };
   if (room.players.length >= MAX_PLAYERS) return { error: ERR.ROOM_FULL };
 
-  const bot = makePlayer(room, nextBotName(room), { isBot: true });
+  // Which policy walks in is a coin toss, so a table of bots is a mixed table
+  // and the two policies get compared in play rather than only in a benchmark.
+  //
+  // Drawn from the room's own lobby stream rather than `room.rng`: a draw from
+  // the dice stream would shift every roll after it, and "Isles, seed 12345" is
+  // meant to describe the game, not the order bots were added in. `version` is
+  // honoured when given, which is what the tests and the arena use to seat a
+  // specific policy.
+  const picked = version ?? room.botRng.pick(BOT_VERSIONS);
+
+  const bot = makePlayer(room, nextBotName(room, picked), { isBot: true, botVersion: picked });
   room.players.push(bot);
   return { player: bot };
 }
@@ -93,7 +104,7 @@ function freeColor(room) {
   return PALETTE.find((c) => !used.has(c)) ?? PALETTE[room.players.length % PALETTE.length];
 }
 
-function makePlayer(room, name, { isBot = false } = {}) {
+function makePlayer(room, name, { isBot = false, botVersion = null } = {}) {
   room.seq += 1;
   return {
     id: `p${room.seq}`,
@@ -101,6 +112,10 @@ function makePlayer(room, name, { isBot = false } = {}) {
     name,
     color: freeColor(room),
     socketId: null,
+    // Which policy plays this seat, or null for a human. Not published: the
+    // version is already in the name the table sees (`v2 3`), and the client has
+    // no use for the number that the name does not already carry.
+    botVersion,
     // A bot is connected from birth: there is no socket to lose. That is
     // load-bearing twice over — `startGame` drops every absent seat, and a
     // snapshot pauses the whole table when the player whose turn it is is
@@ -129,13 +144,23 @@ function makePlayer(room, name, { isBot = false } = {}) {
   };
 }
 
-/** `Bot N` for the lowest free N, matching how unnamed humans are numbered. */
-function nextBotName(room) {
+/**
+ * `v1 N` or `v2 N` — the policy's tag plus the lowest free number for it.
+ *
+ * Numbered per version rather than per table, so `v1 1` and `v2 1` coexist and
+ * the count in a name is that policy's count. The loop is bounded by MAX_PLAYERS
+ * and cannot fail: at most MAX_PLAYERS seats exist and there are MAX_PLAYERS
+ * candidates for any one tag, so a free number always exists. The fallback is
+ * the same pigeonhole argument `resolveName` relies on, kept for symmetry rather
+ * than because it is reachable.
+ */
+function nextBotName(room, version) {
+  const tag = versionTag(version);
   for (let n = 1; n <= MAX_PLAYERS; n++) {
-    const candidate = `Bot ${n}`;
+    const candidate = `${tag} ${n}`;
     if (!nameTaken(room, candidate)) return candidate;
   }
-  return `Bot ${room.seq + 1}`;
+  return `${tag} ${room.seq + 1}`;
 }
 
 function makeRoom({ nickname, mapId, sizeId = null }) {
@@ -156,6 +181,12 @@ function makeRoom({ nickname, mapId, sizeId = null }) {
     // Derived rather than drawn separately so one env override pins both, while
     // still giving the board and the dice independent streams.
     mapSeed: (seed ^ 0x5bf03635) >>> 0,
+    // A third stream, for lobby draws that are not part of the game — today that
+    // is only which policy "Add bot" seats. Kept separate for the same reason the
+    // map has one: taking a number from the dice stream would shift every roll
+    // after it, and the seed is supposed to describe the game, not the order the
+    // seats were filled in.
+    botRng: makeRng((seed ^ 0x7f4a7c15) >>> 0),
     createdAt: Date.now(),
     game: null,
   };

@@ -28,6 +28,11 @@ The lift-ups, roughly in the order they came:
   of one beat at a time.
 - **Room to breathe.** The End turn row and the players list stopped fighting
   over the same margin.
+- **A second bot.** The original policy became v1, a searching one became v2, and
+  Add bot now deals one at random — with an arena built to check whether the new
+  one is actually any harder to beat, which it mostly is not. That is written up
+  in [The bots](#the-bots) rather than smoothed over, because the measurement is
+  the point.
 
 ---
 
@@ -91,9 +96,10 @@ Then open **http://localhost:8880**, exactly as if you had run `npm start`.
 - **Stopping it.** `docker stop` ends the game at once. Rooms live in memory,
   nothing is written to disk, and the server handles SIGTERM rather than making
   you wait out the grace period.
-- **What's in the image.** Production dependencies only, no `test/` and no
-  `docs/`, running as the unprivileged `node` user that `node:24-alpine` already
-  ships. There is no build step, no database, and no state to persist.
+- **What's in the image.** Production dependencies only, no `test/`, no `docs/`
+  and no `tools/` — the suite and the arena both run on the host — and running as
+  the unprivileged `node` user that `node:24-alpine` already ships. There is no
+  build step, no database, and no state to persist.
 
 The tests need the checkout on the host (`npm test`): the image deliberately has
 neither the test files nor `socket.io-client` in it.
@@ -196,24 +202,127 @@ menu, and the **?** in the corner of the board once a game has started.
 
 ### The bots
 
-Bots play by a fixed policy, with no randomness in their choices:
+Two policies ship, and **Add bot** deals one of them at random, so a table of bots
+is usually a mixed table. The name says which you got: `v1 2` is the second v1 at
+the table, `v2 1` the first v2.
 
-- **They attack when they outnumber the defender.** A repelled attack costs the
+Both are pure functions of the board. Neither rolls anything, reads the clock, or
+sees a single fact a human at the table could not: they are handed the provinces,
+the dice, and their own alliances, and nothing else. Nobody's reserves, nobody's
+plan, and above all not the next roll — the dice are thrown after the move is
+chosen, by the server, from a stream the policy has no way to reach.
+
+**v1** plays the roll in front of it, and plays it well:
+
+- **It attacks when it outnumbers the defender.** A repelled attack costs the
   attacker its extra dice, a capture keeps them, and once you work it out the
   whole expected value boils down to `N > M` — attack with more dice than the
-  province next door holds, and not otherwise.
-- **They gamble when nothing else is left.** If both stacks are already at 8 dice,
+  province next door holds, and not otherwise. (That is what v1's own arithmetic
+  says. The first bullet under v2 is about the term in it that is not true.)
+- **It gambles when nothing else is left.** If both stacks are already at 8 dice,
   no attack can become profitable and no reinforcement can improve anything, so a
   bot takes the roll anyway. It is the only move that changes the board, and
   without it two bots could sit there forever.
-- **They never attack an ally.**
-- **They negotiate.** A bot answers a waiting offer before it moves anything else —
-  accepting from a player who isn't in the lead, declining from the player who is —
-  then breaks a pact whose ally has taken the lead, then proposes to a non-leader
-  it shares a border with. It does one of those at a time and asks at most once a
-  turn.
-- **They will not spend dice on a lost cause:** a province facing only allies gets
-  no reinforcement, the same as one facing nobody.
+
+**v2** plans the whole turn instead of a single roll, and searches ahead. Four
+things it does differently, in rough order of how much they matter:
+
+- **It does not pay itself the defender's dice.** v1's arithmetic credits a win
+  with the defender's stack, and those dice are *destroyed* — the same thing the
+  rules section above says plainly. v1's header states the payoff as "the M dice
+  removed from the defender plus the territory itself", so its appetite for
+  attacking is funded by dice nobody ever receives. The size of it: 8 against 7,
+  the roll v1's own comment calls "worth only about +0.04 dice", is honestly worth
+  **−3.2**, and the difference between the two is exactly `p × M`. v2 cannot make
+  this mistake, because it never writes a payoff formula — it applies the real
+  capture rule to a real board and scores what comes out, so the destroyed dice
+  are simply absent from the position it looks at.
+- **It knows what land is for.** A province pays a die *every turn* for the rest of
+  the game, so v2 prices land at several dice rather than one. (This pulls the
+  opposite way to the point above — one error made v1 too keen to attack, this one
+  made it too slow to — which is a large part of why fixing either one alone
+  changes nothing measurable. See `TUNING` in `server/bot-v2.js`.)
+- **It plays the race, and looks after its borders.** A position is scored against
+  whoever is ahead, so taking a province off the leader beats taking it off the
+  straggler with no special rule to say so; and a province of its own sitting short
+  of the stack next door is counted as the loss it is about to be.
+- **It weighs the outcomes instead of averaging them away.** v1 compares one
+  expected number against zero and then treats it as certain. v2 prices the capture
+  and the repel at the probability each actually happens, so the knife-edge gambles
+  fall out on their own rather than needing a risk parameter to suppress.
+
+**Both** never attack an ally, and both negotiate: answer a waiting offer before
+moving anything else — accepting from a player who isn't in the lead, declining
+from the player who is — then break a pact whose ally has taken the lead, then
+propose to a non-leader they share a border with. One action at a time, one ask a
+turn. Neither will spend dice on a lost cause either: a province facing only allies
+gets no reinforcement, the same as one facing nobody.
+
+**Is v2 actually harder to beat? It gets measured rather than asserted, and the
+answer is genuinely not flattering.** `npm run bench` seats the policies at a real
+table, on real boards, with the real rules:
+
+```
+$ npm run bench -- --games 3000
+v1 vs v2 — 3000 games, 136 beats each
+  v2   1536 wins   51.2%   (95% CI 49.4–53.0%)
+  v1   1464 wins   48.8%   (95% CI 47.0–50.6%)
+  3000 decided, 0 drawn, 0 unfinished
+  first move wins — seat 0: 69.1%, seat 1: 30.9%
+  v2 by seat — seat 0: 70.3% (n=1500), seat 1: 32.1% (n=1500)
+  v1 by seat — seat 0: 67.9% (n=1500), seat 1: 29.7% (n=1500)
+
+$ npm run bench -- --seats 1,1,2,2 --games 800
+v1 vs v2 — seats 1,1,2,2 — 800 games, 579 beats each
+  v1    413 wins   51.6%   (95% CI 48.2–55.1%)
+  v2    387 wins   48.4%   (95% CI 44.9–51.8%)
+  800 decided, 0 drawn, 0 unfinished
+```
+
+**Neither interval excludes 50, so the honest reading is that v2 is not
+demonstrably the stronger bot.** Heads-up it is 1.2 points ahead; at a four-player
+table it is 3.2 points behind; both sit inside the noise. The thing that *is*
+established is that the two are very close — which is worth saying out loud,
+because the natural impulse is to report the heads-up run and quietly not run the
+other one.
+
+**Why the elaborate policy does not convert into wins** is the interesting part,
+and the sweeps say something fairly specific. `--sweep` changes one weight and
+replays the identical set of games, and almost nothing moves: `exposure` wanders
+between 46% and 51% with no trend, `lead` between 48% and 52%, `province` is flat
+at 50.3% for 0, 2 and 8. Two things do stand out — setting `province` to 0 drops
+it to 50.3%, and setting `depth` to 0 drops it to 50.0% — but `depth: 0` is not a
+tuning choice, it is the control: with no search, `planMove` falls through to the
+v1 floor and v2 *is* v1, so a dead-even result there is the proof that the harness
+is not quietly leaning toward either side.
+
+The reading that fits all of it: v1's two main errors push in **opposite**
+directions. It pays itself the defender's dice, which makes it attack rolls it
+should decline; and it prices land as a one-off, which makes it slow to expand. So
+correcting either one alone buys nothing measurable — which is exactly what
+`province: 0` and `depth: 0` each reported — and the aggressive play it buys back
+with one hand gets spent on bad rolls with the other. Two mistakes that cancel are
+a much harder thing to beat than one mistake, and that, rather than any cleverness
+in the search, is why a policy with a better argument behind it lands within a
+point or two of the simple rule.
+
+None of which makes v2 pointless. It does not make a specific error that v1 does,
+it reasons about a position instead of a roll, and it is structurally incapable of
+cheating — but on the evidence here, **"unbeatable" is not a thing this game
+offers**, and a bot that is a little better argued and about as hard to beat is the
+honest result.
+
+The arena drives the same functions the server does — there is no second copy of
+any rule in it — so what it measures is the shipped game. Two things about how it
+is run are worth knowing before trusting a number from it:
+
+- **The games are seeded, so a run is repeatable.** Every run plays the same fixed
+  boards, which is what makes `--sweep` a paired comparison instead of two
+  unrelated samples. Before that, the same configuration scored 54.0% once and
+  44.0% the next time, and neither figure meant anything.
+- **There is a control, and it should come out at 50%.** See `depth = 0` above.
+  If that line ever stops being 50%, the harness is leaning toward one policy and
+  every other number it prints is suspect.
 
 ## Maps
 
@@ -279,12 +388,17 @@ plain `npm start`:
 npm test
 ```
 
-271 tests, run by `node --test` with no test framework:
+286 tests, run by `node --test` with no test framework:
 
 - **Rules** — attack resolution, reinforcement placement, elimination and the win
   check, including Monte Carlo checks on the dice maths.
-- **Bots** — hand-built boards with exact expected moves, and a bot-vs-passive
-  game that has to terminate.
+- **Bots** — hand-built boards with exact expected moves, a bot-vs-passive game
+  that has to terminate, and — for v2 — a few hundred generated boards asserting
+  the properties a policy can fail on without any fixture noticing: that it never
+  proposes an illegal attack, never attacks an ally, and never goes quiet on a
+  board where v1 would have moved. That last one is the termination floor, and it
+  is a property rather than a case because the failure it guards against is a game
+  that stops ending.
 - **Maps** — every preset generates a connected, playable board at every size.
 - **Rooms** — seats, the grace period after a disconnect, and what a snapshot is
   allowed to contain.
@@ -295,6 +409,13 @@ npm test
   including a bot game played to a winner, disconnects and resuming, and the
   alliance flows.
 
+Not everything is a test. **Whether v2 is actually the stronger bot** is not
+something a pass/fail assertion can say, so it is not in the suite — it is
+`npm run bench`, which plays the two policies against each other and reports the
+score. The suite checks that a policy is *correct*; the arena is what checks that
+it is *better*, and it is the only reason the weights in `bot-v2.js` are what they
+are rather than what looked reasonable.
+
 ## Layout
 
 ```
@@ -303,11 +424,14 @@ server/     the authoritative game
   game.js       start, attack, end turn, elimination
   rooms.js      seats, sessions, snapshots, the lobby list
   alliances.js  the five diplomacy transitions
-  bot.js        the move policy and the diplomatic policy
+  bots.js       the registry: which policy a seat's version means
+  bot-v1.js     the original move policy and the diplomatic policy
+  bot-v2.js     the searching move policy
   map.js        the Voronoi map generator and its presets
   rng.js        the seeded generator everything random goes through
 shared/     rules.js and constants.js — imported by both halves, verbatim
 public/     index.html, styles.css and the client under js/
 test/       the suite
+tools/      bot-arena.js — the policies playing each other, for the score
 Dockerfile  the container build: production dependencies, unprivileged user
 ```
