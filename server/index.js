@@ -51,10 +51,10 @@ import {
   sessions,
 } from './rooms.js';
 
-// One port everywhere — this default, the image, and the README all say 8888.
+// One port everywhere — this default, the image, and the README all say 8880.
 // `PORT` still overrides it, which is what the test suite leans on to run a
 // server on whatever port is actually free.
-const PORT = Number(process.env.PORT) || 8888;
+const PORT = Number(process.env.PORT) || 8880;
 
 /**
  * How long a bot pauses before each action.

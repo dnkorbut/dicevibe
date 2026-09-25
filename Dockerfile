@@ -5,7 +5,7 @@
 # to run them as. The image is the game and nothing else.
 #
 #   docker build -t dicevibe .
-#   docker run --rm -p 8888:8888 dicevibe
+#   docker run --rm -p 8880:8880 dicevibe
 #
 # `podman build` and `podman run` take exactly the same arguments.
 
@@ -39,15 +39,15 @@ COPY public ./public
 # run as root, which is the one privilege escalation a container cannot undo.
 USER node
 
-# 8888, which is also the server's own default, so the host and the container
+# 8880, which is also the server's own default, so the host and the container
 # agree on the port and neither way of running it surprises anyone. Stated here
 # anyway rather than left implicit: it is the port the healthcheck below reads
 # and the one `EXPOSE` advertises, and `-e PORT=…` overrides the lot.
 #
 # `EXPOSE` is documentation and publishes nothing — `-p` on `docker run` is what
 # decides which port on your machine answers.
-ENV PORT=8888
-EXPOSE 8888
+ENV PORT=8880
+EXPOSE 8880
 
 # `/healthz` is the endpoint the test suite already waits on. Node's own `fetch`
 # keeps curl out of the image.

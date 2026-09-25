@@ -44,7 +44,7 @@ npm install
 npm start
 ```
 
-Then open **http://localhost:8888**.
+Then open **http://localhost:8880**.
 
 `npm run dev` runs the same server under `node --watch`, so it restarts when you
 edit a file.
@@ -58,8 +58,8 @@ this page applies to both.
 - **Same machine** — open a second browser tab (or a private window) at the same
   address. Each tab is its own seat.
 - **Same network** — the server listens on every interface, so anyone on your
-  Wi-Fi can join at `http://<your-machine's-ip>:8888`. Use `PORT=8080 npm start`
-  if 8888 is taken.
+  Wi-Fi can join at `http://<your-machine's-ip>:8880`. Use `PORT=8080 npm start`
+  if 8880 is taken.
 - **Over the internet** — put it behind a tunnel or a port forward. There are no
   accounts and no TLS: plain HTTP, and a game is gone when the process stops.
 
@@ -71,22 +71,22 @@ runtime — the commands below are the only difference.
 
 ```bash
 docker build -t dicevibe .
-docker run --rm -p 8888:8888 dicevibe
+docker run --rm -p 8880:8880 dicevibe
 ```
 
-Then open **http://localhost:8888**, exactly as if you had run `npm start`.
+Then open **http://localhost:8880**, exactly as if you had run `npm start`.
 
-- **The port.** The container listens on **8888**, the same port `npm start`
+- **The port.** The container listens on **8880**, the same port `npm start`
   uses, so nothing about the address changes when you containerise it.
-  `-p 8080:8888` puts the game on 8080 of your machine. To move the port inside
+  `-p 8080:8880` puts the game on 8080 of your machine. To move the port inside
   the container as well: `docker run --rm -e PORT=8080 -p 8080:8080 dicevibe`.
 - **`EXPOSE` publishes nothing.** It is a note to whoever reads the image, and a
-  container listening on 8888 can be published on any port you like — `-p` on
+  container listening on 8880 can be published on any port you like — `-p` on
   `docker run` is the only thing that decides that.
 - **Every other setting is an environment variable**, the same ones as on the
-  host: `docker run --rm -e DICEVIBE_BOT_DELAY_MS=0 -p 8888:8888 dicevibe`.
-- **Playing with others.** `-p 8888:8888` publishes on every interface, so
-  anyone on your network joins at `http://<your-ip>:8888` — the container changes
+  host: `docker run --rm -e DICEVIBE_BOT_DELAY_MS=0 -p 8880:8880 dicevibe`.
+- **Playing with others.** `-p 8880:8880` publishes on every interface, so
+  anyone on your network joins at `http://<your-ip>:8880` — the container changes
   nothing about that.
 - **Stopping it.** `docker stop` ends the game at once. Rooms live in memory,
   nothing is written to disk, and the server handles SIGTERM rather than making
@@ -244,7 +244,7 @@ plain `npm start`:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `PORT` | `8888` | Port to listen on, on the host and in the container alike. |
+| `PORT` | `8880` | Port to listen on, on the host and in the container alike. |
 | `DICEVIBE_BOT_DELAY_MS` | `1000` | How long a bot "thinks" between beats. `0` makes it instant. |
 | `DICEVIBE_ROOM_SEED` | random | Pins every room's dice and board, so a game replays exactly. |
 | `DICEVIBE_MAP_SEED` | `20260923` | Fixed geometry seed for the dev map preview. |
