@@ -582,12 +582,24 @@ button.help {
   flex-direction: column;
   overflow: hidden;
 }
-.rules-list {
-  margin: 12px 0 20px;
-  padding-left: 18px;
-  overflow-y: auto;
+/* The rules and the glyph legend scroll together as one body of text, with the
+   title and the button pinned outside it. Scrolling the bullet list alone was
+   the first thing tried and it was wrong: the legend is a sibling of the list,
+   not a child, so on a short window the flex column squeezed the list down to a
+   sliver and left the legend at full height — the one part that was scrolling
+   was the part there was least of. */
+.rules-body {
+  flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
+  /* Clear of the scrollbar, which otherwise lands on the text of a bullet. */
+  padding-right: 4px;
+  /* A modal sits over a page that can still scroll behind it, and the game
+     screen is taller than the window. Without this, reaching the end of the
+     rules hands the rest of the gesture to the board underneath. */
+  overscroll-behavior: contain;
 }
+.rules-list { margin: 12px 0 20px; padding-left: 18px; }
 .rules-list li {
   margin-bottom: 7px;
   color: var(--muted);

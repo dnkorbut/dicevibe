@@ -125,6 +125,10 @@
 <div id="overlay-rules" class="overlay" hidden>
   <div class="overlay-card rules">
     <h2>How to play</h2>
+    <!-- Everything between the title and the button is one scroll area, so a
+         window too short for the rules scrolls the rules rather than squeezing
+         one part of them and leaving the rest at full height. -->
+    <div class="rules-body">
     <ul class="rules-list">
       <li><strong>Attacking throws one die fewer than the province holds.</strong>
         The die that stays home doesn't fight, so a 5-stack attacks with 4 — while
@@ -153,6 +157,7 @@
       <li><span class="glyph">−</span> break a pact you already have</li>
       <li><span class="glyph crown">♚</span> whoever is ahead on the board</li>
     </ul>
+    </div>
 
     <button id="btn-rules-close" class="primary wide">Got it</button>
   </div>
