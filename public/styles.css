@@ -573,7 +573,11 @@ button.help {
    way out below the fold, which is the same complaint one level down. */
 .overlay-card.rules {
   text-align: left;
-  max-width: 480px;
+  /* Wider than the other cards, which hold one sentence each. Measured: at 480
+     the rules are 80px taller than a laptop window and need a scroll, and by 560
+     they fit — the bullets are short, so the extra measure costs nothing in
+     reading and buys the whole panel back onto one screen. */
+  max-width: 560px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -585,7 +589,7 @@ button.help {
   min-height: 0;
 }
 .rules-list li {
-  margin-bottom: 10px;
+  margin-bottom: 7px;
   color: var(--muted);
   font-size: 14px;
   line-height: 1.45;
@@ -596,6 +600,46 @@ button.help {
    inline run, because the two would otherwise wrap into each other and the
    bullets would read as one paragraph with random bold in it. */
 .rules-list li strong { display: block; color: var(--text); }
+
+/* The rail's glyphs, laid out as the rail lays them out: the same 22px box, the
+   same muted colour, the same weight. The legend is then recognisably the thing
+   on screen rather than a description of it — which matters here because the
+   glyph is the entire label and there is no word anywhere to match it to. */
+.rules-head {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.rules-glyphs { list-style: none; margin: 0 0 20px; padding: 0; }
+.rules-glyphs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.glyph {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted);
+}
+/* Scoped, because `.crown` is one class and so is `.glyph`: the two would be
+   decided by which rule came later in this file rather than by intent, and the
+   crown is the one glyph whose colour carries meaning. */
+.rules-glyphs .crown { color: var(--leader); }
 
 .spinner {
   width: 22px;
