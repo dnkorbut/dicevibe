@@ -44,7 +44,7 @@ npm install
 npm start
 ```
 
-Then open **http://localhost:3000**.
+Then open **http://localhost:8888**.
 
 `npm run dev` runs the same server under `node --watch`, so it restarts when you
 edit a file.
@@ -58,8 +58,8 @@ this page applies to both.
 - **Same machine** — open a second browser tab (or a private window) at the same
   address. Each tab is its own seat.
 - **Same network** — the server listens on every interface, so anyone on your
-  Wi-Fi can join at `http://<your-machine's-ip>:3000`. Use `PORT=8080 npm start`
-  if 3000 is taken.
+  Wi-Fi can join at `http://<your-machine's-ip>:8888`. Use `PORT=8080 npm start`
+  if 8888 is taken.
 - **Over the internet** — put it behind a tunnel or a port forward. There are no
   accounts and no TLS: plain HTTP, and a game is gone when the process stops.
 
@@ -76,10 +76,8 @@ docker run --rm -p 8888:8888 dicevibe
 
 Then open **http://localhost:8888**, exactly as if you had run `npm start`.
 
-- **The port.** The container listens on **8888**, because the image sets `PORT`
-  for itself. That is the one thing that differs from running it on the host,
-  where the server's own default of 3000 still applies — the image overrides the
-  setting rather than changing the default, so `npm start` is unaffected.
+- **The port.** The container listens on **8888**, the same port `npm start`
+  uses, so nothing about the address changes when you containerise it.
   `-p 8080:8888` puts the game on 8080 of your machine. To move the port inside
   the container as well: `docker run --rm -e PORT=8080 -p 8080:8080 dicevibe`.
 - **`EXPOSE` publishes nothing.** It is a note to whoever reads the image, and a
@@ -246,7 +244,7 @@ plain `npm start`:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `PORT` | `3000` | Port to listen on. The container image sets `8888` for itself; everything else is unchanged. |
+| `PORT` | `8888` | Port to listen on, on the host and in the container alike. |
 | `DICEVIBE_BOT_DELAY_MS` | `1000` | How long a bot "thinks" between beats. `0` makes it instant. |
 | `DICEVIBE_ROOM_SEED` | random | Pins every room's dice and board, so a game replays exactly. |
 | `DICEVIBE_MAP_SEED` | `20260923` | Fixed geometry seed for the dev map preview. |

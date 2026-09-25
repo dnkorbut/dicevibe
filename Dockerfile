@@ -39,10 +39,10 @@ COPY public ./public
 # run as root, which is the one privilege escalation a container cannot undo.
 USER node
 
-# The one setting that differs from the host: `npm start` still listens on the
-# server's own default of 3000, and the image overrides it here rather than
-# changing that default, so neither way of running it surprises anyone. The
-# healthcheck below reads `PORT`, so it follows this without being told.
+# 8888, which is also the server's own default, so the host and the container
+# agree on the port and neither way of running it surprises anyone. Stated here
+# anyway rather than left implicit: it is the port the healthcheck below reads
+# and the one `EXPOSE` advertises, and `-e PORT=…` overrides the lot.
 #
 # `EXPOSE` is documentation and publishes nothing — `-p` on `docker run` is what
 # decides which port on your machine answers.
