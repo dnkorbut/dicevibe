@@ -1,0 +1,19 @@
+# The Dockerfile names everything it copies, so nothing here changes what ends up
+# in the image — this is about what gets sent to the daemon. `node_modules` is
+# the one that matters: it is ~50MB of host-built binaries that must never be
+# reused inside the image, because a native module built for macOS would fail
+# there rather than be silently wrong.
+node_modules
+.git
+.gitignore
+.playwright-mcp/
+
+# Not needed to run, and not copied in.
+test
+docs
+*.md
+*.png
+
+# And the build's own inputs.
+Dockerfile
+.dockerignore

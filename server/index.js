@@ -77,6 +77,22 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server);
 
+// Two headers, both belt-and-braces rather than fixes for anything known.
+//
+// `nosniff` means a response is taken at the type it declares, so a stray body
+// that happens to look like markup can never be sniffed into executing. It is
+// the backstop under the `text/plain` on the two error paths below, and it
+// costs nothing anywhere else.
+//
+// `DENY` because nothing has any business framing this page. The session token
+// lives in sessionStorage, which a frame can reach, so an invisible iframe over
+// the lobby is worth ruling out even though it would need a place to put one.
+app.use((_req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  next();
+});
+
 app.use(express.static(path.join(import.meta.dirname, '..', 'public')));
 app.use('/shared', express.static(path.join(import.meta.dirname, '..', 'shared')));
 
@@ -111,7 +127,13 @@ app.get('/dev/map', (req, res) => {
   const preset = asked ?? DEFAULT_MAP_ID;
 
   if (!isKnownMap(preset)) {
-    res.status(400).type('html').send(`<pre>unknown preset: ${preset}</pre>`);
+    // text/plain, not html, and it is load-bearing. `preset` is the raw query
+    // string, so serving it as HTML is reflected XSS on a page that shares an
+    // origin with the game — and the game keeps its session token in
+    // sessionStorage, which any script running here can read and use to take
+    // the seat. A plain-text body cannot execute, so the echo stops being a
+    // sink no matter what was typed into the address bar.
+    res.status(400).type('text/plain').send(`unknown preset: ${preset}\n`);
     return;
   }
 
@@ -124,7 +146,12 @@ app.get('/dev/map', (req, res) => {
   try {
     map = generateMap({ preset, size, territoryCount: count, seed });
   } catch (err) {
-    res.status(400).type('html').send(`<pre>${err.message}</pre>`);
+    // Same reasoning as the unknown-preset branch above. This path is not
+    // actually reachable with caller *text* — `t` has to survive
+    // `Number.parseInt` to get here, so the message only ever interpolates a
+    // number — but it is the same `send` on the same origin as the game, so it
+    // takes the same type rather than resting on that staying true.
+    res.status(400).type('text/plain').send(`${err.message}\n`);
     return;
   }
 
@@ -506,6 +533,27 @@ io.on('connection', (socket) => {
     const reply = typeof ack === 'function' ? ack : () => {};
     try {
       const { token } = payload ?? {};
+      // Refuse only a socket that is already seated somewhere *else*, so the
+      // ordinary path — resume on every reconnect, back into its own seat — is
+      // untouched. Without this one connection can hold seats in two rooms at
+      // once, and then `findBySocketId` marks only one of them offline: the
+      // room it is not really in keeps a seat reporting `connected: true`
+      // forever, is never grace-expired and never reaped, and sits in the menu
+      // behind a host who does not exist. That is the same failure
+      // `alreadySeated` guards in CREATE and JOIN — a token is just the other
+      // way in, and it was the one left open.
+      //
+      // Both halves of the comparison have to be known before this can refuse:
+      // an unresolvable token is `unknown_session` and must stay that way, so a
+      // bogus token from a seated socket is not answered as if it were a seat
+      // conflict.
+      const sitting = roomOf(socket);
+      const target = typeof token === 'string' ? sessions.get(token)?.roomCode : null;
+      if (sitting && target && sitting.code !== target) {
+        reply({ ok: false, error: ERR.ALREADY_SEATED });
+        return;
+      }
+
       const result = resumeSession({ token, socketId: socket.id });
       if (result.error) {
         reply({ ok: false, error: result.error });
@@ -864,7 +912,14 @@ server.listen(PORT, () => {
 });
 
 // Surface the shape of the process for debugging; helpful when a room wedges.
-process.on('SIGINT', () => {
-  console.log(`\nshutting down — ${rooms.size} room(s), ${sessions.size} session(s)`);
-  process.exit(0);
-});
+//
+// SIGTERM as well as SIGINT, because in a container this process is PID 1 and
+// the kernel does not apply a signal's default action to PID 1 — without a
+// handler here `docker stop` would ignore SIGTERM and wait out its full grace
+// period before resorting to SIGKILL.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    console.log(`\nshutting down — ${rooms.size} room(s), ${sessions.size} session(s)`);
+    process.exit(0);
+  });
+}

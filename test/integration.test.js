@@ -637,6 +637,60 @@ test('double-clicking join does not seat one socket twice', async () => {
   assert.equal(host.latest.players.length, 2, 'one host, one guest — no phantom third seat');
 });
 
+test('resume will not seat one socket at a second table', async () => {
+  // The third way into a seat, and the one that was left open: a token is just
+  // as good a way in as creating or joining. Without the guard one connection
+  // can hold seats in two rooms at once, and then `findBySocketId` marks only
+  // one of them offline — so the room it is not really in keeps a seat
+  // reporting `connected: true` forever, is never grace-expired and never
+  // reaped, and sits in the menu behind a host who does not exist.
+  const first = connect();
+  const second = connect();
+  const a = await first.create('ana');
+  const b = await second.create('bob');
+  assert.equal(a.ok, true, 'the first table');
+  assert.equal(b.ok, true, 'the second table');
+
+  // `second` holds a perfectly good token of its own, and asks to spend it on
+  // the other table.
+  const res = await second.emit(EV.RESUME, { token: a.token });
+  assert.equal(res.ok, false, 'the resume must be refused');
+  assert.equal(res.error, 'already_seated');
+
+  // And the refusal has to leave both tables exactly as they were. A guard that
+  // ran after `resumeSession` would have already handed the target seat to this
+  // socket, which is the ghost it exists to prevent — so the assertion that
+  // matters is that the target's occupant is untouched.
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal(first.latest.players.length, 1, 'the target table is untouched');
+  assert.equal(first.latest.players[0].connected, true, 'and its occupant still connected');
+  assert.equal(second.latest.players.length, 1, 'the resumer keeps its own table');
+  assert.equal(second.latest.code, b.roomCode, 'and has not been moved');
+});
+
+test('resume into the seat the socket already holds is still allowed', async () => {
+  // The boundary the guard must not cross, and it is the whole reason the guard
+  // compares rooms rather than just calling `alreadySeated`: resuming on every
+  // reconnect is the design — the refresh path and the auto-reconnect path are
+  // deliberately the same code — so refusing a resume because the socket is
+  // "already seated" would break every reconnect in the game.
+  const host = connect();
+  const created = await host.create('ana');
+  assert.equal(created.ok, true, 'create should succeed');
+
+  const again = await host.emit(EV.RESUME, { token: created.token });
+  assert.equal(again.ok, true, `a same-room resume must be honoured: ${again.error}`);
+  assert.equal(again.roomCode, created.roomCode);
+  assert.equal(again.playerId, created.playerId);
+
+  // A token that resolves to nothing is still `unknown_session`, not
+  // `already_seated` — the guard needs both halves of its comparison to be
+  // known before it can say the two disagree.
+  const bogus = await host.emit(EV.RESUME, { token: 'not-a-real-token' });
+  assert.equal(bogus.ok, false);
+  assert.equal(bogus.error, 'unknown_session');
+});
+
 test('a resumed player takes the host role from an absent host', async () => {
   // Mid-game seats are held indefinitely, so a host role that lands on someone
   // who has gone takes the only way out with it: `room:abandon` is host-only and
@@ -1752,4 +1806,69 @@ test('a request survives the requester reconnecting', async () => {
     'the ask, on the resumed connection',
   );
   assert.equal(seen.turn.playerId, current.latest.turn.playerId, 'and the game resumed where it was');
+});
+
+/* ── HTTP routes ───────────────────────────────────────────────────────────── */
+
+test('/dev/map refuses an unbounded board instead of generating one', async () => {
+  // `/dev/map?t=` is the one route that takes an unbounded number from anyone
+  // who can reach the port, and generation is quadratic in it — so this is a
+  // denial-of-service test, not a validation one. The timings are the point:
+  // the refusal has to come before any work, because a bound checked afterwards
+  // would still let the whole event loop be blocked, just before apologising.
+  for (const t of ['2001', '300000', '999999999']) {
+    const started = Date.now();
+    const res = await fetch(`${url}/dev/map?t=${t}`);
+    const body = await res.text();
+    const ms = Date.now() - started;
+
+    assert.equal(res.status, 400, `t=${t} must be refused`);
+    assert.match(body, /territoryCount must be <= 2000/, `t=${t} refusal body`);
+    assert.ok(ms < 2000, `t=${t} took ${ms}ms — the bound is being checked too late`);
+  }
+
+  // The board the game itself can ask for is unaffected, so the bound is
+  // invisible in play.
+  const ok = await fetch(`${url}/dev/map?t=150`);
+  assert.equal(ok.status, 200, 'a real board size must still render');
+});
+
+test('/dev/map answers its errors as text, never as executable markup', async () => {
+  // `preset` is the raw query string and used to be interpolated into an HTML
+  // body. This page shares an origin with the game, which keeps its session
+  // token in sessionStorage — so script running here could read that token and
+  // take the seat it belongs to. The header check is what makes the body type
+  // binding rather than advisory.
+  const payload = '<script>alert(1)</script>';
+  const res = await fetch(`${url}/dev/map?preset=${encodeURIComponent(payload)}`);
+  const body = await res.text();
+
+  assert.equal(res.status, 400);
+  assert.match(
+    res.headers.get('content-type') ?? '',
+    /^text\/plain/,
+    'an echoed parameter must never be served as html',
+  );
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.ok(body.includes(payload), 'the parameter is still reported back, just inertly');
+
+  // The same for the generation-failure path. It only ever echoes a number —
+  // `territoryCount must be <= 2000, got 2001` — but it is the same `res.send`
+  // and the same reasoning, so it takes the same type.
+  const other = await fetch(`${url}/dev/map?t=2001`);
+  assert.equal(other.status, 400);
+  assert.match(other.headers.get('content-type') ?? '', /^text\/plain/);
+
+  // A `t` that is not an integer at all is ignored rather than refused, which
+  // is the documented contract: it falls back to the preset's own size instead
+  // of failing the page.
+  const ignored = await fetch(`${url}/dev/map?t=${encodeURIComponent(payload)}`);
+  assert.equal(ignored.status, 200, 'a non-numeric t is ignored, not treated as a bad request');
+});
+
+test('the game page is served with the framing and sniffing headers', async () => {
+  const res = await fetch(`${url}/`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
 });

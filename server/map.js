@@ -122,6 +122,22 @@ const MAX_ATTEMPTS = 8;
 /** No preset may ask for more water than this, however the retry decay lands. */
 const MAX_VOID_FRACTION = 0.6;
 
+/**
+ * The ceiling on a board, and it is a security bound rather than a gameplay one.
+ *
+ * `/dev/map` reads its cell count straight off the query string and generation
+ * costs roughly O(count²) — a couple of hundred thousand cells is a minute of
+ * solid CPU — and there is no auth on that route, so an unbounded count is a
+ * one-line way to block the event loop for every socket in the process. The
+ * cost is paid synchronously, so nothing else runs while it is paid.
+ *
+ * The largest board the game itself can ask for is 150 (`huge`), and the only
+ * other way in is the `DICEVIBE_TERRITORIES` debugging knob, so this sits far
+ * past anything legitimate: it is a bound on what a bug or an attacker can ask
+ * for, not a limit anyone will meet on purpose.
+ */
+const MAX_TERRITORIES = 2000;
+
 /** Fixed geometry seed. Override to explore alternative continents. */
 function mapSeed() {
   const raw = Number.parseInt(process.env.DICEVIBE_MAP_SEED ?? '', 10);
@@ -697,7 +713,13 @@ export function generateMap({
 } = {}) {
   const def = MAPS[preset] ?? MAPS[DEFAULT_MAP_ID];
   const count = territoryCount ?? defaultTerritoryCount(preset, size);
+  // Both bounds are checked before any work happens, which is the point: the
+  // expensive part of this function is everything below, so a refusal has to
+  // come first to be worth anything.
   if (count < 3) throw new Error(`territoryCount must be >= 3, got ${count}`);
+  if (count > MAX_TERRITORIES) {
+    throw new Error(`territoryCount must be <= ${MAX_TERRITORIES}, got ${count}`);
+  }
 
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
     const base = (seed + i * 7919) >>> 0;

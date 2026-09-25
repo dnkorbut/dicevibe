@@ -725,6 +725,29 @@ test('generateMap rejects a board too small to divide', () => {
   assert.throws(() => generateMap({ territoryCount: 0 }), /territoryCount must be >= 3/);
 });
 
+test('generateMap rejects a board too large to be asked for', () => {
+  // The upper bound is a security bound, not a gameplay one. `/dev/map` takes
+  // its cell count straight off the query string and generation is quadratic in
+  // it, so an unbounded count is an unauthenticated way to block the event loop
+  // for every socket in the process. This asserts the refusal, and that it
+  // costs nothing: a bound checked after the expensive work would still be a
+  // denial of service, only a politer one.
+  //
+  // The time assertion is a couple of orders of magnitude of headroom on a
+  // check that is two comparisons, so it cannot flake on a loaded machine — it
+  // fails only if the bound stops being checked before the work.
+  const started = process.hrtime.bigint();
+  assert.throws(() => generateMap({ territoryCount: 2001 }), /territoryCount must be <= 2000/);
+  assert.throws(() => generateMap({ territoryCount: 300000 }), /territoryCount must be <= 2000/);
+  assert.throws(() => generateMap({ territoryCount: Number.MAX_SAFE_INTEGER }), /must be <= 2000/);
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(ms < 250, `the bound must be checked before any work, took ${ms.toFixed(0)}ms`);
+
+  // And the bound sits above every board the game itself can ask for, so it is
+  // invisible in play: 150 is `huge`, the largest size on the menu.
+  assert.doesNotThrow(() => generateMap({ preset: 'ridge', territoryCount: 2000, seed: 1 }));
+});
+
 test('generateMap refuses to hand back a board with too little land', () => {
   // 3 cells can never supply 3 territories per player for 8 players. The call
   // must fail loudly rather than return a board that would deal somebody no

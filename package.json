@@ -9,6 +9,9 @@
     "dev": "node --watch server/index.js",
     "test": "node --test"
   },
+  "engines": {
+    "node": ">=20.11"
+  },
   "dependencies": {
     "d3-delaunay": "^6.0.4",
     "express": "^5.2.1",

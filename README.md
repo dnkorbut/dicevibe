@@ -49,6 +49,10 @@ Then open **http://localhost:3000**.
 `npm run dev` runs the same server under `node --watch`, so it restarts when you
 edit a file.
 
+Prefer a container? There's a `Dockerfile` and the same server runs in it
+unchanged — see [Running in Docker](#running-in-docker) below. Everything else on
+this page applies to both.
+
 ## Playing with other people
 
 - **Same machine** — open a second browser tab (or a private window) at the same
@@ -58,6 +62,37 @@ edit a file.
   if 3000 is taken.
 - **Over the internet** — put it behind a tunnel or a port forward. There are no
   accounts and no TLS: plain HTTP, and a game is gone when the process stops.
+
+## Running in Docker
+
+The repo carries a `Dockerfile`, and the game runs in a container with nothing
+extra to configure. It works the same under Podman and any other OCI-compatible
+runtime — the commands below are the only difference.
+
+```bash
+docker build -t dicevibe .
+docker run --rm -p 3000:3000 dicevibe
+```
+
+Then open **http://localhost:3000**, exactly as if you had run `npm start`.
+
+- **The port.** The container listens on 3000; `-p 8080:3000` puts it on 8080 of
+  your machine. To move the port inside the container as well:
+  `docker run --rm -e PORT=8080 -p 8080:8080 dicevibe`.
+- **Every other setting is an environment variable**, the same ones as on the
+  host: `docker run --rm -e DICEVIBE_BOT_DELAY_MS=0 -p 3000:3000 dicevibe`.
+- **Playing with others.** `-p 3000:3000` publishes on every interface, so
+  anyone on your network joins at `http://<your-ip>:3000` — the container changes
+  nothing about that.
+- **Stopping it.** `docker stop` ends the game at once. Rooms live in memory,
+  nothing is written to disk, and the server handles SIGTERM rather than making
+  you wait out the grace period.
+- **What's in the image.** Production dependencies only, no `test/` and no
+  `docs/`, running as the unprivileged `node` user that `node:24-alpine` already
+  ships. There is no build step, no database, and no state to persist.
+
+The tests need the checkout on the host (`npm test`): the image deliberately has
+neither the test files nor `socket.io-client` in it.
 
 ---
 
@@ -259,4 +294,5 @@ server/     the authoritative game
 shared/     rules.js and constants.js — imported by both halves, verbatim
 public/     index.html, styles.css and the client under js/
 test/       the suite
+Dockerfile  the container build: production dependencies, unprivileged user
 ```
