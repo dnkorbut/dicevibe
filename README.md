@@ -119,9 +119,10 @@ menu, and the **?** in the corner of the board once a game has started.
 6. **The red frame** around the board means the turn is yours and you haven't
    looked at the map yet. Move the pointer over it and the frame goes.
 7. **⏩** ends the current bot's turn right now, if a bot is the one thinking.
-8. **Alliances** live in the players list on the right: click another player to
-   propose a pact, or use the small buttons on their row to accept, decline or
-   break one.
+8. **Alliances** live in the players list on the right, on the small controls each
+   row carries: propose a pact, accept or decline an offer, withdraw your own
+   before it is answered, or break one you already have. The row itself is not a
+   button — clicking a player does nothing.
 9. **Clicking any province that isn't yours** highlights everything that player
    owns — handy while you're waiting for your turn.
 
@@ -146,9 +147,10 @@ menu, and the **?** in the corner of the board once a game has started.
 - The defender rolls **its whole stack**.
 - **Highest total wins, ties go to the defender.** So attacking equal stacks is a
   losing bet.
-- **If the attacker wins**, the defending stack is wiped out, the province changes
-  hands, and all but one of the attacking dice move in. The attacker's total is
-  unchanged — the prize is the defender's dice and the province.
+- **If the attacker wins**, the province changes hands and all but one of the
+  attacking dice move in. The defending dice are **destroyed, not captured** — no
+  one ever gains them — so the attacker's total is unchanged, it has only moved
+  onto the new province. The prize is the land, not the stack.
 - **If the defender holds**, the attacking stack collapses to **1 die**. The extra
   dice are destroyed, not pulled back. Attacking from a big stack is a real
   gamble.
