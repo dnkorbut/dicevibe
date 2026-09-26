@@ -69,8 +69,19 @@
 
     <div class="actions">
       <button id="btn-start" class="primary">Start game</button>
-      <button id="btn-add-bot" class="ghost">Add bot</button>
       <button id="btn-leave" class="ghost">Leave</button>
+    </div>
+
+    <!-- One button per policy, because "Add bot" stopped being a single thing
+         the moment there was more than one bot to add. `data-bot-version` is the
+         version to seat; the empty string is the server's own "deal me one at
+         random", which is why it is a real value here and not a missing one. -->
+    <div id="add-bot" class="actions bots">
+      <span class="muted small">Add bot</span>
+      <button class="ghost" data-bot-version="">Random</button>
+      <button class="ghost" data-bot-version="1">v1</button>
+      <button class="ghost" data-bot-version="2">v2</button>
+      <button class="ghost" data-bot-version="3">v3</button>
     </div>
   </div>
 </section>

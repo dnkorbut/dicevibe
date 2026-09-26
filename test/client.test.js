@@ -15,6 +15,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
+import { BOT_VERSIONS } from '../server/bots.js';
 import { ERR, ERR_TEXT } from '../shared/constants.js';
 
 const PUBLIC_DIR = path.join(import.meta.dirname, '..', 'public');
@@ -203,4 +204,39 @@ test('every class the client uses has a rule in the stylesheet', () => {
   // spelling the client barely uses. Fewer than 30 means the extraction has
   // regressed, and a passing result would mean nothing.
   assert.ok(used.size >= 30, `the scanner found only ${used.size} classes; it has stopped seeing the client`);
+});
+
+/* ── the add-bot buttons ───────────────────────────────────────────────────── */
+
+test('the add-bot buttons offer exactly the versions the server accepts', () => {
+  // The buttons and the registry are two lists that have to agree, and the
+  // delegated listener means neither the id check above nor anything else can
+  // see the second one: `data-bot-version` is read with `closest()`, so a button
+  // naming a version that does not exist is a button that looks right, is styled
+  // right, and answers "That bot version doesn't exist." to every click.
+  //
+  // Both directions are failures worth catching. A new policy with no button is
+  // unreachable from the lobby. A stale button outlives its policy and is a
+  // control that can only ever produce an error.
+  const offered = [...html.matchAll(/data-bot-version="([^"]*)"/g)].map((m) => m[1]);
+
+  // The empty string is the Random button, which sends no version at all and is
+  // the absence of a choice rather than a fourth policy.
+  assert.deepEqual(
+    offered.filter((v) => v !== ''),
+    BOT_VERSIONS.map(String),
+    'the buttons and BOT_VERSIONS have drifted apart',
+  );
+  assert.ok(offered.includes(''), 'the Random button is gone, so there is no way to ask for a random bot');
+
+  // And the three parts of the handoff, each of which can be edited alone: the
+  // markup above, the delegated read in the lobby, and the payload in main.
+  const lobby = sources.get('lobby.js');
+  assert.match(lobby, /closest\('button\[data-bot-version\]'\)/, 'the lobby button selector moved');
+  assert.match(lobby, /dataset\.botVersion/, 'the lobby stopped reading the version off the button');
+  assert.match(
+    sources.get('main.js'),
+    /version \? \{ version: Number\(version\) \} : \{\}/,
+    'main.js stopped turning the button attribute into an ADD_BOT payload',
+  );
 });

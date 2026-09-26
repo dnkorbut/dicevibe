@@ -486,8 +486,12 @@ lobby.init({
       if (!res?.ok) ui.toast(errText(res), 'error');
     });
   },
-  onAddBot: () => {
-    socket.emit(EV.ADD_BOT, {}, (res) => {
+  // `version` is the string off the button's `data-bot-version`, or '' for the
+  // Random button — which sends no version at all rather than an empty one, so
+  // "deal me a bot" and "seat me v0" cannot be confused on the wire.
+  onAddBot: (version) => {
+    const payload = version ? { version: Number(version) } : {};
+    socket.emit(EV.ADD_BOT, payload, (res) => {
       if (!res?.ok) ui.toast(errText(res), 'error');
     });
   },

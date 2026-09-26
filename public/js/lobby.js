@@ -15,7 +15,7 @@ const lobbyMap = $('lobby-map');
 const lobbyPlayers = $('lobby-players');
 const lobbyHint = $('lobby-hint');
 const startBtn = $('btn-start');
-const addBotBtn = $('btn-add-bot');
+const addBotRow = $('add-bot');
 const leaveBtn = $('btn-leave');
 
 const NAME_KEY = 'dicevibe.nickname';
@@ -74,8 +74,17 @@ export function init(nextHandlers) {
   });
 
   startBtn.addEventListener('click', () => handlers.onStart());
-  addBotBtn.addEventListener('click', () => handlers.onAddBot());
   leaveBtn.addEventListener('click', () => handlers.onLeave());
+
+  // Delegated, for the same reason as the two lists below: four buttons that
+  // differ only in a data attribute are one listener, not four. The attribute is
+  // read as the version to seat, and the empty string is passed through rather
+  // than swallowed — it is the server's "deal me one", not a missing value.
+  addBotRow.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-bot-version]');
+    if (!btn) return;
+    handlers.onAddBot(btn.dataset.botVersion);
+  });
 
   // Delegated for the same reason as the open-games list: the rows are rebuilt
   // on every snapshot.
@@ -232,8 +241,10 @@ export function renderLobby(app) {
   startBtn.hidden = !isHost;
   startBtn.disabled = connected < MIN_PLAYERS;
   // A bot counts toward the minimum, so a host with no one else around can still
-  // start a game — which is the entire point of having them.
-  addBotBtn.hidden = !isHost || full;
+  // start a game — which is the entire point of having them. The whole row hides
+  // together: a version button for a table that is already full invites a click
+  // that can only fail.
+  addBotRow.hidden = !isHost || full;
 
   if (!isHost) {
     lobbyHint.textContent = 'Waiting for the host to start the game.';

@@ -227,6 +227,12 @@ button.wide { width: 100%; }
 
 .actions { display: flex; gap: 10px; margin-top: 18px; }
 
+/* The bot row wraps, unlike the row above it. Six controls on one line is wider
+   than the card on a laptop, and a version button that has drifted off the edge
+   is worse than one on a second line — the four are a set, and the whole point of
+   the row is that they are visible together. */
+.bots { flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+
 .banner {
   position: sticky;
   top: 0;

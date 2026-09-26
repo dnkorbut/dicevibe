@@ -14,6 +14,39 @@
 // heads-up, over many boards.** It is not a claim about strength against a
 // human, which nothing in this repository can measure.
 //
+// ## What the arena was measuring
+//
+// For most of the time these three policies have existed, this file kept score
+// wrong, and the way it was wrong is worth more than the fix.
+//
+// `startGame` shuffles the roster — the players array *is* the turn order, so the
+// shuffle is what decides who moves first. This file seated its policies by writing
+// a version onto the roster and then read the winner back as `seats[winner]`: the
+// version at that index in the array *it* built, not the version of the player the
+// game actually put there. Those are the same thing only when the shuffle happens
+// to leave the roster alone, which it does in about half of games. The other half
+// were scored with the winner and the loser swapped.
+//
+// A blend of correct results and inverted ones converges on **50.0% for any policy,
+// however strong** — so the failure was not noise, it was a flattening. Twelve
+// configurations of one policy swept between 46.8% and 50.7%; a weight whose true
+// cost was seven points read as three; a policy that beat v1 by eighteen points
+// read as level with it. Several conclusions were drawn from those runs and stated
+// as measurements, and every one of them was an artifact of this arithmetic. The
+// fix is two lines — attribute the win to whoever sat there — and the reason to
+// write it down is that the broken output looked *plausible*: near 50%, mildly
+// varying, with a confident interval printed beside it. Nothing about a number like
+// that invites a second look. The controls did not catch it either: `--seats 1,1`
+// returns 50% whether the scoring is right or inverted, so the one check that was
+// run every time could not tell the two apart.
+//
+// The check that does catch it is the one now printed on every run: **the per-seat
+// split.** It counts each win against the seat that took it, which is a fact about
+// the board and not about the version labels, so it stays honest under the bug. In
+// an all-one-policy run it is the whole output, and it should read near the
+// first-move advantage — around 70/30 — rather than near 50/50. A control reading
+// 50/50 across two seats is a control that has stopped measuring anything.
+//
 // Fidelity is the point, so this drives the same modules the server does —
 // `startGame`, `attack`, `endTurn`, and the alliance dispatch from
 // `server/alliances.js`, which is exactly what the server's bot tick calls.
@@ -32,6 +65,8 @@
 //   node tools/bot-arena.js --seats 2           # v2 against itself, as a control
 //   node tools/bot-arena.js --seats 1,1,2       # a three-seat mixed table
 //   node tools/bot-arena.js --sweep province    # does that weight actually matter?
+//   node tools/bot-arena.js --tune 3 --vs 2 --sweep shortfall   # v3's weights, v2's table
+//   node tools/bot-arena.js --seats 3,2 --set shortfall=4       # one weight, run properly
 
 import { PHASE } from '../shared/constants.js';
 import {
@@ -39,11 +74,26 @@ import {
   applyAlliance,
   inboundRequests,
 } from '../server/alliances.js';
-import { TUNING } from '../server/bot-v2.js';
+import { TUNING as TUNING_V2 } from '../server/bot-v2.js';
+import { TUNING as TUNING_V3 } from '../server/bot-v3.js';
 import { policyFor } from '../server/bots.js';
 import { attack, endTurn, startGame } from '../server/game.js';
 import { MAP_CHOICES } from '../server/map.js';
 import { addBot, createRoom, deleteRoom } from '../server/rooms.js';
+
+/**
+ * Whose weights `--sweep` mutates.
+ *
+ * A sweep has to write into the live object the policy reads, and there is one of
+ * those per policy, so which one is being tuned is a flag rather than an
+ * assumption. Until v3 landed there was only v2's, and the sweep silently meant
+ * "v2's" — which would have gone on being true and quietly wrong the moment a
+ * second policy had weights of its own.
+ */
+const TUNINGS = new Map([
+  [2, TUNING_V2],
+  [3, TUNING_V3],
+]);
 
 /**
  * A beat ceiling, so a policy that cannot finish a game reports that instead of
@@ -138,9 +188,13 @@ function playGame(seats, mapId, seed) {
 
   const winnerId = room.game?.winnerId ?? null;
   const winner = room.players.findIndex((p) => p.id === winnerId);
+  // Who actually sat where, which is *not* `seats`: `startGame` shuffles the
+  // roster to fix the turn order, so seat `s` holds `seats[s]` in about half of
+  // games and some other entry in the rest. See the note in `tournament`.
+  const seatVersions = room.players.map((p) => p.botVersion);
   deleteRoom(room.code);
 
-  return { winner, beats, stalled: room.phase === PHASE.PLAYING };
+  return { winner, seatVersions, beats, stalled: room.phase === PHASE.PLAYING };
 }
 
 /** A 95% interval on a proportion, normal approximation. */
@@ -158,6 +212,12 @@ function interval(wins, n) {
  * conquest game has a real advantage, so a policy always seated first would win
  * on the coin toss. The rotation walks each policy through every seat, so over a
  * run of games neither side has the first move more often than the other.
+ *
+ * It is not, however, what makes the result fair — `startGame` shuffles the roster
+ * before the first turn, so the seat list this builds is a *request* that the shuffle
+ * grants about half the time. Balance comes from that coin toss, and the rotation is
+ * kept only because it costs nothing and makes the seat list read the way a reader
+ * expects. The per-seat split in `report` is what checks the balance is real.
  */
 function tournament(seatVersions, games, mapIds, onGame) {
   const tally = new Map(seatVersions.map((v) => [v, 0]));
@@ -177,17 +237,25 @@ function tournament(seatVersions, games, mapIds, onGame) {
     const seats = [...seatVersions.slice(shift), ...seatVersions.slice(0, shift)];
     const mapId = mapIds[i % mapIds.length];
 
-    const { winner, beats, stalled: hung } = playGame(seats, mapId, i);
+    const { winner, seatVersions: sat, beats, stalled: hung } = playGame(seats, mapId, i);
     totalBeats += beats;
     if (hung) stalled++;
 
-    for (let s = 0; s < seats.length; s++) seatSeen.get(seats[s])[s]++;
+    // **Keyed by who sat there, not by `seats`.** `startGame` shuffles the roster,
+    // so `seats[winner]` is the version at *index* `winner` in the array this file
+    // built, not the version of the player who actually won. Reading it that way
+    // labelled every win with a coin toss: a pool of correctly-attributed games
+    // and inverted ones came out at 50.0% for every policy, however strong, which
+    // is precisely what a dozen sweeps over this file reported before anyone
+    // checked. `seatVersions` is the roster as the game dealt it.
+    for (let s = 0; s < sat.length; s++) seatSeen.get(sat[s])[s]++;
 
     if (winner >= 0) {
+      const version = sat[winner];
       decided++;
-      tally.set(seats[winner], (tally.get(seats[winner]) ?? 0) + 1);
+      tally.set(version, (tally.get(version) ?? 0) + 1);
       bySeat[winner]++;
-      seatWins.get(seats[winner])[winner]++;
+      seatWins.get(version)[winner]++;
     }
     onGame?.(i + 1);
   }
@@ -228,12 +296,15 @@ function report(label, result) {
   // policy's games are played from behind, so an edge has to be twice as big to
   // move the pooled figure at all.
   //
-  // The rotation in `tournament` is what makes the pooled figure fair anyway —
-  // each version walks through every seat, so each gets the advantage in half its
-  // games. This line is how that is checked rather than assumed. **A control run
-  // of one policy against itself is exactly this line and nothing else**, which is
-  // why a same-version run now prints no version tally: its two seats share one
-  // bucket and could only ever read 100%.
+  // The roster shuffle in `startGame` is what makes the pooled figure fair — every
+  // policy lands in every seat about equally often, so each gets the advantage in
+  // half its games. This line is how that is checked rather than assumed, and it is
+  // the only line here that a scoring bug cannot corrupt: it counts a win against
+  // the seat that took it, which is a fact about the board rather than about the
+  // version labels. A control that reads 50/50 across two seats has stopped
+  // measuring something. **A control run of one policy against itself is exactly
+  // this line and nothing else**, which is why a same-version run prints no version
+  // tally: its two seats share one bucket and could only ever read 100%.
   const split = result.bySeat
     .map((w, i) => `seat ${i}: ${(100 * w / result.decided).toFixed(1)}%`)
     .join(', ');
@@ -252,11 +323,17 @@ function report(label, result) {
 }
 
 function parseArgs(argv) {
-  const args = { games: 200, seats: null, sweep: null };
+  const args = { games: 200, seats: null, sweep: null, tune: 2, vs: 1, set: new Map() };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--games') args.games = Number.parseInt(argv[++i], 10);
     else if (argv[i] === '--seats') args.seats = argv[++i].split(',').map(Number);
     else if (argv[i] === '--sweep') args.sweep = argv[++i];
+    else if (argv[i] === '--tune') args.tune = Number.parseInt(argv[++i], 10);
+    else if (argv[i] === '--vs') args.vs = Number.parseInt(argv[++i], 10);
+    else if (argv[i] === '--set') {
+      const [key, value] = argv[++i].split('=');
+      args.set.set(key, Number(value));
+    }
   }
   return args;
 }
@@ -270,12 +347,37 @@ function progress(done, total) {
 const args = parseArgs(process.argv.slice(2));
 const maps = MAP_CHOICES;
 
+// `--set key=value`, applied before anything plays. A sweep answers "does this
+// number matter at all" over a handful of points; this is how one of those points
+// is then run properly, at a game count the sweep could never afford five times
+// over. The weights are a live object on purpose, which is what makes it a
+// one-liner — see `TUNING` in either policy.
+if (args.set.size > 0) {
+  const TUNING = TUNINGS.get(args.tune);
+  if (!TUNING) {
+    console.error(`--tune must be one of ${[...TUNINGS.keys()].join(', ')} (got: ${args.tune})`);
+    process.exit(1);
+  }
+  for (const [key, value] of args.set) {
+    if (!(key in TUNING)) {
+      console.error(`unknown tuning key: ${key}. Known: ${Object.keys(TUNING).join(', ')}`);
+      process.exit(1);
+    }
+    TUNING[key] = value;
+  }
+}
+
 if (args.sweep) {
   // One weight at a time, against the fixed default opponent. The question a
   // sweep answers is not "what is the best number" — it is "does this number
   // change anything at all", and a weight that moves the win rate by less than
   // its own confidence interval is a weight that could be deleted.
   const key = args.sweep;
+  const TUNING = TUNINGS.get(args.tune);
+  if (!TUNING) {
+    console.error(`--tune must be one of ${[...TUNINGS.keys()].join(', ')} (got: ${args.tune})`);
+    process.exit(1);
+  }
   if (!(key in TUNING)) {
     console.error(`unknown tuning key: ${key}. Known: ${Object.keys(TUNING).join(', ')}`);
     process.exit(1);
@@ -288,15 +390,18 @@ if (args.sweep) {
         Number.isInteger(original) ? Math.round(v) : Number(v.toFixed(3)),
       );
 
-  console.log(`sweeping ${key} (default ${original}) over ${args.games} games each\n`);
+  console.log(
+    `sweeping v${args.tune}'s ${key} (default ${original}) against v${args.vs}` +
+      ` over ${args.games} games each\n`,
+  );
   for (const value of [...new Set(candidates)]) {
     TUNING[key] = value;
-    const result = tournament([1, 2], args.games, maps, (d) => progress(d, args.games));
-    const wins = result.tally.get(2) ?? 0;
+    const result = tournament([args.vs, args.tune], args.games, maps, (d) => progress(d, args.games));
+    const wins = result.tally.get(args.tune) ?? 0;
     const p = result.decided ? wins / result.decided : 0;
     const [lo, hi] = interval(wins, result.decided);
     console.log(
-      `  ${key} = ${String(value).padEnd(6)} v2 wins ${(p * 100).toFixed(1).padStart(5)}%` +
+      `  ${key} = ${String(value).padEnd(6)} v${args.tune} wins ${(p * 100).toFixed(1).padStart(5)}%` +
         `  (95% CI ${(lo * 100).toFixed(1)}–${(hi * 100).toFixed(1)}%, ${result.stalled} unfinished)`,
     );
   }

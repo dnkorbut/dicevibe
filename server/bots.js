@@ -7,6 +7,7 @@
 
 import * as v1 from './bot-v1.js';
 import * as v2 from './bot-v2.js';
+import * as v3 from './bot-v3.js';
 
 /**
  * Every version "Add bot" can deal.
@@ -14,11 +15,12 @@ import * as v2 from './bot-v2.js';
  * Ordered, and the order is the menu: the draw is uniform over this array, so
  * listing a version twice is how it would be made more common.
  */
-export const BOT_VERSIONS = [1, 2];
+export const BOT_VERSIONS = [1, 2, 3];
 
 const POLICIES = new Map([
   [1, v1],
   [2, v2],
+  [3, v3],
 ]);
 
 /**

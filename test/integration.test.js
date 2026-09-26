@@ -18,6 +18,7 @@ import test, { after, before } from 'node:test';
 import { io } from 'socket.io-client';
 
 import { EV, MAX_DICE, MAX_PLAYERS, PHASE } from '../shared/constants.js';
+import { BOT_VERSIONS } from '../server/bots.js';
 
 const ROOT = path.join(import.meta.dirname, '..');
 
@@ -1379,9 +1380,13 @@ test('the host can add a bot, and a bot counts as a second player', async () => 
   const seated = await host.waitFor((s) => s.players.length === 2, 'the bot seat');
   const bot = seated.players.find((p) => p.isBot);
   assert.ok(bot, 'the seat must be flagged as a bot');
-  // `v1 1` or `v2 1`: the version is drawn, so the first number is either, but
-  // the seat is the first of its version at the table and the name must say so.
-  assert.match(bot.name, /^v[12] 1$/, `unexpected bot name: ${bot.name}`);
+  // `v1 1`, `v2 1` or `v3 1`: the version is drawn, so the first number is any of
+  // them, but the seat is the first of its version at the table and the name must
+  // say so. The character class is derived rather than typed, because a version
+  // added to `BOT_VERSIONS` and not here would make this test fail only on the
+  // games where the draw happened to pick it — a one-in-three flake.
+  const versions = BOT_VERSIONS.join('');
+  assert.match(bot.name, new RegExp(`^v[${versions}] 1$`), `unexpected bot name: ${bot.name}`);
   assert.equal(bot.connected, true, 'a bot is connected from birth — it has no socket to lose');
   assert.equal(bot.isHost, false, 'the bot must not be the host');
   assert.equal(seated.hostId, host.playerId);
@@ -1415,6 +1420,59 @@ test('only the host may add or remove a bot', async () => {
   const gone = await host.emit(EV.REMOVE_BOT, { playerId: botId });
   assert.equal(gone.ok, true);
   await host.waitFor((s) => !s.players.some((p) => p.isBot), 'the bot to go');
+});
+
+test('the host can ask for a specific bot version, and gets that one', async () => {
+  // What the four buttons send. Each version is asked for in turn so the test
+  // covers the whole row rather than whichever one it happened to name.
+  //
+  // The name is what is checked, and it is the only thing that *can* be checked
+  // from here: `botVersion` is not in the snapshot. It is deliberately not wired
+  // into the wire format — the version is already in the seat's name, so
+  // republishing it would be the same fact twice, the mistake `selected`'s comment
+  // warns about. What this test therefore proves is that asking for v3 seats a bot
+  // called `v3 1` and not one called `v1 3` or `v2 1`; that `botVersion` on the
+  // player object matches the name is `rooms.test.js`'s job, one layer down.
+  const host = connect();
+  await host.create('ana');
+
+  for (const version of BOT_VERSIONS) {
+    const added = await host.emit(EV.ADD_BOT, { version });
+    assert.equal(added.ok, true, `adding v${version} failed: ${added.error}`);
+
+    const snap = await host.waitFor(
+      (s) => s.players.some((p) => p.isBot && p.name.startsWith(`v${version} `)),
+      `the v${version} seat`,
+    );
+    assert.ok(
+      snap.players.some((p) => p.isBot && p.name === `v${version} 1`),
+      `expected a seat named v${version} 1, got ${snap.players.map((p) => p.name).join(', ')}`,
+    );
+  }
+
+  assert.equal(host.latest.players.length, 1 + BOT_VERSIONS.length, 'one seat per version');
+});
+
+test('an unknown bot version is refused rather than seated as something else', async () => {
+  // The alternative was to seat whatever `policyFor` falls back to, which is v1 —
+  // so the host would have got a bot tagged `v9 1` playing v1's policy. That is a
+  // lie in the one place it is hardest to notice, since the name is the only thing
+  // the table ever sees.
+  const host = connect();
+  await host.create('ana');
+
+  const refused = await host.emit(EV.ADD_BOT, { version: 9 });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error, 'bad_bot_version');
+  assert.equal(host.latest.players.length, 1, 'and no seat was taken');
+
+  // Still refused after the game starts, where the older guard would have said
+  // `game_in_progress` — the version check runs first on purpose, so a client
+  // sending nonsense gets told what is actually wrong with it.
+  await host.emit(EV.ADD_BOT, { version: 1 });
+  await host.emit(EV.START);
+  const again = await host.emit(EV.ADD_BOT, { version: 9 });
+  assert.equal(again.error, 'bad_bot_version');
 });
 
 test('a bot plays its own turns, and a whole game can be played against one', async () => {

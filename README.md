@@ -30,9 +30,14 @@ The lift-ups, roughly in the order they came:
   over the same margin.
 - **A second bot.** The original policy became v1, a searching one became v2, and
   Add bot now deals one at random — with an arena built to check whether the new
-  one is actually any harder to beat, which it mostly is not. That is written up
-  in [The bots](#the-bots) rather than smoothed over, because the measurement is
-  the point.
+  one is actually any harder to beat. It is: v2 takes 58% of its games against v1.
+  That is written up in [The bots](#the-bots) with the runs behind it, because the
+  measurement is the point.
+- **A third bot, and buttons to pick one.** v3 scores a position by what the
+  end-of-turn refill will actually do with it, so it can tell a capture that
+  leaves a gap behind from one that leaves the source buried in its own land. The
+  four buttons — Random, v1, v2, v3 — replace the single Add bot, so a table can
+  be set up deliberately instead of drawn.
 
 ---
 
@@ -202,11 +207,12 @@ menu, and the **?** in the corner of the board once a game has started.
 
 ### The bots
 
-Two policies ship, and **Add bot** deals one of them at random, so a table of bots
-is usually a mixed table. The name says which you got: `v1 2` is the second v1 at
-the table, `v2 1` the first v2.
+Three policies ship. **Add bot** carries four buttons — Random, v1, v2 and v3 —
+so a table can be dealt at random or built on purpose, and v3 is reachable without
+having to re-roll for it. The name says which you got: `v1 2` is the second v1 at
+the table, `v3 1` the first v3.
 
-Both are pure functions of the board. Neither rolls anything, reads the clock, or
+All three are pure functions of the board. None rolls anything, reads the clock, or
 sees a single fact a human at the table could not: they are handed the provinces,
 the dice, and their own alliances, and nothing else. Nobody's reserves, nobody's
 plan, and above all not the next roll — the dice are thrown after the move is
@@ -240,8 +246,9 @@ things it does differently, in rough order of how much they matter:
 - **It knows what land is for.** A province pays a die *every turn* for the rest of
   the game, so v2 prices land at several dice rather than one. (This pulls the
   opposite way to the point above — one error made v1 too keen to attack, this one
-  made it too slow to — which is a large part of why fixing either one alone
-  changes nothing measurable. See `TUNING` in `server/bot-v2.js`.)
+  made it too slow to — which is why correcting one of them on its own moves the
+  result by less than correcting both does. v2 corrects both, and beats v1 58.1%.
+  See `TUNING` in `server/bot-v2.js`.)
 - **It plays the race, and looks after its borders.** A position is scored against
   whoever is ahead, so taking a province off the leader beats taking it off the
   straggler with no special rule to say so; and a province of its own sitting short
@@ -251,66 +258,145 @@ things it does differently, in rough order of how much they matter:
   and the repel at the probability each actually happens, so the knife-edge gambles
   fall out on their own rather than needing a risk parameter to suppress.
 
-**Both** never attack an ally, and both negotiate: answer a waiting offer before
+**v3** keeps v2's search exactly as it is — same beam, same depth, same node
+budget — and rewrites only the position score. The idea is that **an attack is not
+paid for in dice**: a capture leaves the attacker's total untouched, because the
+stack relocates, the source is left at 1, and the defender's dice are destroyed
+rather than taken. So the price of a capture is not dice, it is what the move does
+to the *shape* of the empire, and the bill arrives at End Turn, when one die per
+province is dealt out to whoever is furthest behind. v3 computes that bill before
+it moves:
+
+```
+income   = provinces held          — what End Turn will pay this turn
+need     = Σ max(0, enemy(t) - dice(t)) over every province t held
+residual = max(0, need - income)   — shortfall still open after the refill
+```
+
+- **It knows which province is behind which.** `income` and `need` are exact, and
+  `residual` is exact too — not an approximation of the reinforcement rule but its
+  answer, because every die the refill deals goes to a province behind a real
+  player, and each one closes exactly one point of one gap. That is what lets v3
+  price a move without simulating the end of the turn a thousand times per
+  decision.
+- **It prefers the dead end, and no rule says so.** Attacking out of a province
+  buried inside your own land leaves it at 1 facing nobody, so the refill does not
+  care; attacking out of one with an enemy on its other flank leaves a gap that has
+  to be made good before anything else can happen. Two captures that v2 cannot tell
+  apart are completely different prices, and the difference falls out of the
+  arithmetic rather than being special-cased — nothing in `bot-v3.js` mentions a
+  dead end or an interior province.
+- **Safety first and growth second, as one ordering rather than two rules.** The
+  score is `power(mine) - power(leader) - shortfall × residual`. While a shortfall
+  is open, the penalty dominates and the search will not trade safety for land;
+  once it is closed the penalty is zero and the score is exactly v2's race, so the
+  policy grows. There is no branch that decides which of the two it is doing, and
+  no state where it has to.
+- **Land is cheaper than v2 thought, so it buys more of it.** v2 charged for the
+  shortfall a move left behind but never credited the income the new province
+  brings, so it under-bought land on exactly the boards where land was free. v3 is
+  more willing to expand in the direction the argument predicts and almost never
+  the other way. Worth knowing where that ranks, though: asked about 4739 positions
+  sampled from real games, the two policies agree on attack-or-end-turn 97.1% of the
+  time. The re-pricing is a small lever, and the bench below says it is not where
+  v3's wins come from.
+- **It refuses the attack that is worst on the board and pays for it anyway when
+  everyone else refuses too.** A capture costs nothing, so the price of an attack is
+  the repel: a failed one sets the attacking province back to 1, which is seven dice
+  off an eight-stack. Eight dice into eight dice wins 27.4% of the time. v1, v2 and
+  v3's own search all take that shot; v3's gate prices the down-side at twice what
+  it burns and declines it. That alone is worth seven points against v1 — but a
+  policy that can decline everything can decline forever, and two seats doing it
+  freeze the board at the eight-dice cap with nobody able to improve. So the gate
+  has an override, and the override has a rule: v3 prices *every* player on the
+  board the same way it prices itself, and takes the shot only when nobody has an
+  attack that pays. It is the difference between "I decline" and "we are stuck",
+  and it is worth eighteen points against v1 on its own.
+
+**All three** never attack an ally, and all three negotiate: answer a waiting offer before
 moving anything else — accepting from a player who isn't in the lead, declining
 from the player who is — then break a pact whose ally has taken the lead, then
 propose to a non-leader they share a border with. One action at a time, one ask a
-turn. Neither will spend dice on a lost cause either: a province facing only allies
-gets no reinforcement, the same as one facing nobody.
+turn. None of them will spend dice on a lost cause either: a province facing only
+allies gets no reinforcement, the same as one facing nobody.
 
-**Is v2 actually harder to beat? It gets measured rather than asserted, and the
-answer is genuinely not flattering.** `npm run bench` seats the policies at a real
-table, on real boards, with the real rules:
+**All three** get measured rather than asserted. `npm run bench` seats the policies
+at a real table, on real boards, with the real rules:
 
 ```
 $ npm run bench -- --games 3000
-v1 vs v2 — 3000 games, 136 beats each
-  v2   1536 wins   51.2%   (95% CI 49.4–53.0%)
-  v1   1464 wins   48.8%   (95% CI 47.0–50.6%)
+v1 vs v2 — seats 1,2 — 3000 games, 136 beats each
+  v2   1742 wins   58.1%   (95% CI 56.3–59.8%)
+  v1   1258 wins   41.9%   (95% CI 40.2–43.7%)
   3000 decided, 0 drawn, 0 unfinished
   first move wins — seat 0: 69.1%, seat 1: 30.9%
-  v2 by seat — seat 0: 70.3% (n=1500), seat 1: 32.1% (n=1500)
-  v1 by seat — seat 0: 67.9% (n=1500), seat 1: 29.7% (n=1500)
+  v2 by seat — seat 0: 77.0% (n=1512), seat 1: 38.8% (n=1488)
+  v1 by seat — seat 0: 61.2% (n=1488), seat 1: 23.0% (n=1512)
 
 $ npm run bench -- --seats 1,1,2,2 --games 800
 v1 vs v2 — seats 1,1,2,2 — 800 games, 579 beats each
-  v1    413 wins   51.6%   (95% CI 48.2–55.1%)
-  v2    387 wins   48.4%   (95% CI 44.9–51.8%)
+  v2    458 wins   57.3%   (95% CI 53.8–60.7%)
+  v1    342 wins   42.8%   (95% CI 39.3–46.2%)
   800 decided, 0 drawn, 0 unfinished
+
+$ npm run bench -- --seats 3,1 --games 3000
+v1 vs v3 — seats 3,1 — 3000 games, 143 beats each
+  v3   2077 wins   69.2%   (95% CI 67.6–70.9%)
+  v1    923 wins   30.8%   (95% CI 29.1–32.4%)
+  3000 decided, 0 drawn, 0 unfinished
+  first move wins — seat 0: 69.7%, seat 1: 30.3%
+  v3 by seat — seat 0: 89.2% (n=1488), seat 1: 49.5% (n=1512)
+  v1 by seat — seat 0: 50.5% (n=1512), seat 1: 10.8% (n=1488)
+
+$ npm run bench -- --seats 3,2 --games 3000
+v2 vs v3 — seats 3,2 — 3000 games, 141 beats each
+  v3   1835 wins   61.2%   (95% CI 59.4–62.9%)
+  v2   1165 wins   38.8%   (95% CI 37.1–40.6%)
+  3000 decided, 0 drawn, 0 unfinished
+  v3 by seat — seat 0: 80.8% (n=1488), seat 1: 41.8% (n=1512)
+  v2 by seat — seat 0: 58.2% (n=1512), seat 1: 19.2% (n=1488)
 ```
 
-**Neither interval excludes 50, so the honest reading is that v2 is not
-demonstrably the stronger bot.** Heads-up it is 1.2 points ahead; at a four-player
-table it is 3.2 points behind; both sit inside the noise. The thing that *is*
-established is that the two are very close — which is worth saying out loud,
-because the natural impulse is to report the heads-up run and quietly not run the
-other one.
+The ordering is clean and every interval excludes 50: **v3 beats v2 61.2%, and v2
+beats v1 58.1%.** Both of those hold heads-up and at a four-player table, where v2
+is 14.5 points ahead rather than the 3.2 points behind it used to report.
 
-**Why the elaborate policy does not convert into wins** is the interesting part,
-and the sweeps say something fairly specific. `--sweep` changes one weight and
-replays the identical set of games, and almost nothing moves: `exposure` wanders
-between 46% and 51% with no trend, `lead` between 48% and 52%, `province` is flat
-at 50.3% for 0, 2 and 8. Two things do stand out — setting `province` to 0 drops
-it to 50.3%, and setting `depth` to 0 drops it to 50.0% — but `depth: 0` is not a
-tuning choice, it is the control: with no search, `planMove` falls through to the
-v1 floor and v2 *is* v1, so a dead-even result there is the proof that the harness
-is not quietly leaning toward either side.
+The seat split is worth reading past the headline, because it says something the
+pooled figure hides. Moving first is worth about 70% in this game, so a policy
+that only wins from the front has not really been measured. v3 wins 89.2% of its
+games as first player *and* 49.5% as second against v1 — a coin toss against a
+policy holding the first move. v1, given the first move against v3, gets 50.5%.
+That is the sharper form of the result: not that v3 wins more when it is ahead,
+but that being ahead has stopped being the thing that decides it.
 
-The reading that fits all of it: v1's two main errors push in **opposite**
-directions. It pays itself the defender's dice, which makes it attack rolls it
-should decline; and it prices land as a one-off, which makes it slow to expand. So
-correcting either one alone buys nothing measurable — which is exactly what
-`province: 0` and `depth: 0` each reported — and the aggressive play it buys back
-with one hand gets spent on bad rolls with the other. Two mistakes that cancel are
-a much harder thing to beat than one mistake, and that, rather than any cleverness
-in the search, is why a policy with a better argument behind it lands within a
-point or two of the simple rule.
+**A note on the numbers above, because they are not the ones this file used to
+carry.** Every figure in the previous version of this section came from the arena
+with its scoring inverted — the roster is shuffled at `startGame`, and the harness
+was reading the winner back by array index rather than by who actually sat there,
+which labels about half of all games with the wrong result. Correct results blended
+with inverted ones converge on 50.0% for any policy, however strong, which is why
+that version reported v2 at 51.2% and v3 at 49.0% and concluded that the policies
+were too close to separate. They are not close. The control it printed every run
+could not catch the bug either: a mirror match returns 50% whether the scoring is
+right or inverted. The check that does catch it is the per-seat split, which is
+counted against the seat rather than the label; see the heading on
+`tools/bot-arena.js`.
 
-None of which makes v2 pointless. It does not make a specific error that v1 does,
-it reasons about a position instead of a roll, and it is structurally incapable of
-cheating — but on the evidence here, **"unbeatable" is not a thing this game
-offers**, and a bot that is a little better argued and about as hard to beat is the
-honest result.
+**The weights, swept on a harness that now keeps score.** `--sweep` changes one
+weight and replays the identical set of games. Against v1, at 600 games a point:
+`land` moves the result by 1.4 points across its whole range, `province` by 2.5,
+`die` by 3 — all inside the interval of the run that measured them. Two are not
+plateau: `risk: 1`, which prices a failed attack at nothing, scores 61.8% against
+`risk: 2`'s 69.2%; and `shortfall: 0`, which prices the refill's shortfall at
+nothing, scores 62.8% against 69.2%. Those two defaults are load-bearing and the
+rest are where a number happened to land.
+
+**Where v3's eighteen points come from**, since "a better score" is not an
+explanation. Against v1, with everything else held: the search is worth about eight
+(`depth: 0`, which drops the search and leaves the re-priced greedy rule, scores
+60.6%), and the rule about who is willing to roll a losing attack is worth about
+seventeen (v1's own version of that rule scores 51.3%). The position score and the
+escape rule are the policy; the beam is v2's, borrowed unchanged.
 
 The arena drives the same functions the server does — there is no second copy of
 any rule in it — so what it measures is the shipped game. Two things about how it
@@ -320,9 +406,10 @@ is run are worth knowing before trusting a number from it:
   boards, which is what makes `--sweep` a paired comparison instead of two
   unrelated samples. Before that, the same configuration scored 54.0% once and
   44.0% the next time, and neither figure meant anything.
-- **There is a control, and it should come out at 50%.** See `depth = 0` above.
-  If that line ever stops being 50%, the harness is leaning toward one policy and
-  every other number it prints is suspect.
+- **There is a control, and the one that matters is the per-seat split.** An
+  all-one-policy table has to come out near the first-move advantage — about 70/30
+  — because that is a fact about the board. A control reading 50/50 across two
+  seats is not a neutral harness; it is a harness that has stopped measuring.
 
 ## Maps
 
@@ -388,17 +475,20 @@ plain `npm start`:
 npm test
 ```
 
-286 tests, run by `node --test` with no test framework:
+303 tests, run by `node --test` with no test framework:
 
 - **Rules** — attack resolution, reinforcement placement, elimination and the win
   check, including Monte Carlo checks on the dice maths.
 - **Bots** — hand-built boards with exact expected moves, a bot-vs-passive game
-  that has to terminate, and — for v2 — a few hundred generated boards asserting
-  the properties a policy can fail on without any fixture noticing: that it never
-  proposes an illegal attack, never attacks an ally, and never goes quiet on a
-  board where v1 would have moved. That last one is the termination floor, and it
-  is a property rather than a case because the failure it guards against is a game
-  that stops ending.
+  that has to terminate, and — for v2 and v3 — a few hundred generated boards
+  asserting the properties a policy can fail on without any fixture noticing: that
+  it never proposes an illegal attack, never attacks an ally, and never goes quiet
+  without a price to justify it. That last one is the termination floor, and it is a
+  property rather than a case because the failure it guards against is a game that
+  stops ending. Note what it can and cannot say: v3 *is* allowed to decline a shot
+  v1 would have taken, so the assertion is that every decline prices as
+  unprofitable — not, as an earlier version of it claimed, that v3 moves whenever v1
+  would.
 - **Maps** — every preset generates a connected, playable board at every size.
 - **Rooms** — seats, the grace period after a disconnect, and what a snapshot is
   allowed to contain.
@@ -427,6 +517,7 @@ server/     the authoritative game
   bots.js       the registry: which policy a seat's version means
   bot-v1.js     the original move policy and the diplomatic policy
   bot-v2.js     the searching move policy
+  bot-v3.js     the searching policy, scoring the position the refill produces
   map.js        the Voronoi map generator and its presets
   rng.js        the seeded generator everything random goes through
 shared/     rules.js and constants.js — imported by both halves, verbatim

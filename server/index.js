@@ -22,7 +22,7 @@ import {
   requestAlliance,
   respondAlliance,
 } from './alliances.js';
-import { policyFor } from './bots.js';
+import { BOT_VERSIONS, policyFor } from './bots.js';
 import { attack, endTurn, selectTerritory, startGame } from './game.js';
 import {
   DEFAULT_MAP_ID,
@@ -720,7 +720,7 @@ io.on('connection', (socket) => {
     scheduleBot(room);
   });
 
-  on(socket, EV.ADD_BOT, (_payload, reply) => {
+  on(socket, EV.ADD_BOT, (payload, reply) => {
     const room = roomOf(socket);
     if (!room) {
       reply({ ok: false, error: ERR.NO_SUCH_ROOM });
@@ -731,7 +731,23 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const result = addBot(room);
+    // No version means "deal me one", which is both what this event did before
+    // there was a choice and what the Random button still sends. An explicit one
+    // has to be a version this build has, and `addBot` is deliberately not the
+    // place that check lives: it is the programmatic API the arena and the tests
+    // seat policies with, and they name versions directly. This is the boundary
+    // where a number arrives from a browser, so it is the boundary that checks.
+    // Coerced rather than trusted, the same way a room code and a nickname are:
+    // `Number` turns a stray string into the number it spells, `NaN` for anything
+    // that is not one, and `NaN` is not in the list.
+    const raw = payload?.version ?? null;
+    const version = raw === null ? null : Number(raw);
+    if (version !== null && !BOT_VERSIONS.includes(version)) {
+      reply({ ok: false, error: ERR.BAD_BOT_VERSION });
+      return;
+    }
+
+    const result = addBot(room, version);
     if (result.error) {
       reply({ ok: false, error: result.error });
       return;

@@ -111,6 +111,7 @@ export const ERR = {
   ALREADY_ALLIED: 'already_allied',
   NOT_ALLIED: 'not_allied',
   NO_PENDING_REQUEST: 'no_pending_request',
+  BAD_BOT_VERSION: 'bad_bot_version',
   SERVER_ERROR: 'server_error',
 };
 
@@ -146,6 +147,13 @@ export const ERR_TEXT = {
   // loser has to be able to discard the answer quietly) and a cancellation of
   // something that is no longer pending.
   [ERR.NO_PENDING_REQUEST]: 'That alliance request is no longer open.',
+  // Reachable only from a client that asked for a version this build does not
+  // have — an old page against a newer server, or a hand-rolled emit. The
+  // alternative was to seat *something*, and `policyFor` would have done exactly
+  // that: an unknown version falls back to v1, so the host would have got a bot
+  // tagged `v9 1` playing v1's policy, which is a lie in the one place a lie is
+  // hardest to notice.
+  [ERR.BAD_BOT_VERSION]: "That bot version doesn't exist.",
   [ERR.SERVER_ERROR]: 'Something went wrong on the server.',
 };
 
