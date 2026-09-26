@@ -111,19 +111,69 @@
 // ## It cannot cheat, and that is structural
 //
 // The same argument as v2's, and it holds for the same reason: `planMove` takes a
-// board — `owner`, `dice`, `adjacency` — and nothing else. It never sees the RNG,
-// the other seats' reserves or their plans. Every quantity above is a function of
-// the public board. A human with the rules and a pencil could compute `need` and
-// `income` at the table, and this bot is doing nothing more than that.
+// board — `owner`, `dice`, `adjacency` — and a reserve, and nothing else. It never
+// sees the RNG, the other seats' reserves or their plans. Every quantity above is a
+// function of the public board. A human with the rules and a pencil could compute
+// `need` and `income` at the table, and this bot is doing nothing more than that.
+//
+// The reserve is the one number it takes that is not on the board, and it is worth
+// being exact about why that is not a hole in the argument. It is *this seat's own*
+// reserve, it is published to the whole table on the rail (a human reads the same
+// number off their own row), and no other seat's reserve is readable from it or
+// from anything else here. Having it can only sharpen a decision about a position
+// the seat already knows — see "The reserve" below — and a policy that plays
+// against the number on its own dashboard is not playing with information anybody
+// else lacks.
 //
 // ## What it assumes, and why that is safe
 //
-// The reserve is not passed in, so `income` counts this turn's gain and nothing
-// else — the projection assumes the bank is empty. That is nearly always exactly
-// true rather than merely conservative: `endTurn` deals the whole reserve out and
-// only what will not fit stays behind, and nothing fits only when every province
-// is already at 8 dice. It is the pessimistic direction in any case, since a
-// banked die can only make a position safer than the projection says.
+// `refill` still projects as though the bank were empty, and that is a deliberate
+// limit on how far the reserve reaches. A reserve really would cover a shortfall —
+// `endTurn` spends it before it spends the income — so the projection over-states
+// the danger of an empire that is holding one, and `residual` is larger than the
+// truth. It is pessimistic in the safe direction, and leaving it there is the
+// smaller change: `residual` is the term the position score is built on and every
+// number in this file was measured with it reading the board alone, so folding the
+// reserve into it would be a second behaviour change wearing the first one's
+// clothes. Banking, not defending, is what was wrong. See "The reserve" below.
+//
+// ## The reserve, and when banking stops paying
+//
+// The one rule here that reads a number the board does not carry, and it exists
+// because of what `distributeDice` does on a board that has run out of room.
+//
+// Reinforcement is exhaustive: it places a die on every pass and the only way out
+// of the loop is running out of dice or running out of room, so an empire's reserve
+// after a turn is exactly `stock + income - room`. A reserve only survives while the
+// empire is nearly full — and once it survives it *grows*, because `stock > room`
+// implies `stock + income - room > income`. The ratchet is the whole problem: an
+// empire whose front is a wall of eights banks its entire income every turn for the
+// rest of the game, and the number on its rail climbs into the hundreds while none
+// of it can ever reach a province. Measured on the arena's largest board, v3 held
+// **1497** dice in reserve before this rule existed and never spent one of them.
+//
+// What makes that a mistake rather than merely untidy is that a banked die is a
+// **failure that has already been paid for**. A repel costs `stack - 1` dice, and
+// dice the refill was going to hand back anyway are not a cost at all — so an
+// over-stocked empire is declining shots on a price it is not actually paying. The
+// rule is the user's, and it is arithmetic: hold a reserve up to what the empire is
+// worth, one banked die per province held, and past that stop banking and take the
+// shot. `overstock` is that test, and it is exactly `stock > room`.
+//
+// Two consequences worth stating, because both are load-bearing. The floor's field
+// of admissible losing shots **widens** while over-stocked — from cap-versus-cap to
+// every shot that does not pay for itself — since "take a shot" cannot mean "take a
+// shot, if it happens to be the one standoff this file already knew about": a wall
+// of eights facing a wall of sevens is just as frozen as two eights facing each
+// other, and there is no cap-versus-cap pair in it to fire on. And the rule is
+// **inert below the cap**: a reserve inside it changes nothing at all, which is what
+// keeps every number in this file's measurements describing the policy that is
+// actually running. Both of those are pinned in `test/bot-v3.test.js`.
+//
+// The board size is the reason this went unnoticed for so long, and the arena has a
+// `--size` flag now because of it. On the default board a game ends before an empire
+// runs out of room, so the reserve never gets past a few dice; on `huge` it reaches
+// four figures. Every published number for this policy was measured on the default.
 //
 // ## What a failed attack really costs
 //
@@ -150,41 +200,65 @@
 // A policy that can decline every attack can decline forever, and this one can:
 // priced at what a stack is really worth, an eight-versus-eight shot is the worst
 // attack on the board and there is no reason to take it. Two seats that both decline
-// it sit at the cap and stare at each other — measured, `escape: 0` against itself
-// finishes **0 of 400** games inside the arena's 20000-beat ceiling.
+// it sit at the cap and stare at each other, and that is not a hypothetical — before
+// the reserve rule existed, `escape: 0` against itself finished **0 of 400** games
+// inside the arena's 20000-beat ceiling.
 //
 // So the floor is a floor in both directions: a rule that is not allowed to decline,
-// with a price on that rule, and both are measured against v1 and v2 at 800 games,
-// and against itself at 400:
+// with a price on that rule. Measured against v1 and v2 at 800 games and against
+// itself at 400, and re-measured after the reserve rule landed — which is why it
+// reads differently from the version of it in this file's history:
 //
 // | `escape` | who takes the shot | vs v1 | vs v2 | against itself |
 // |---|---|---|---|---|
-// | `0` | nobody — the ceiling, and a livelock | 69.8% | 60.0% | 0 of 400 finished |
-// | `1` | everybody, as v1 does | 51.3% | 45.7% | 400 of 400 |
+// | `0` | nobody — the ceiling | 69.8% | 60.0% | 400 of 400 |
+// | `1` | everybody, as v1 does | 50.5% | 44.1% | 400 of 400 |
 // | `2` | whoever is behind on the board | 60.5% | 49.6% | 400 of 400 |
 // | `3` | whoever it is, if nobody has a good move left | 68.3% | 59.3% | 400 of 400 |
-// | `4` | as `3`, priced at v1's cheaper rate | 70.0% | — | 394 of 400 |
+// | `4` | as `3`, priced at v1's cheaper rate | 69.9% | 60.1% | 400 of 400 |
 //
-// The spread between the top and bottom rows is eighteen points, off one clause
-// about who is willing to roll a losing attack, and it is the largest single number
-// in this file. It is also the one thing here that is adversarial rather than
-// positional: v1 rolls a cap shot whenever it has one and nothing better, about
-// fourteen times a game, and a policy that simply refuses to join in collects most
-// of those eighteen points without doing anything clever.
+// **The last column has stopped meaning anything, and that is the reserve rule's
+// doing.** An empire at the cap is over-stocked by construction, so `over` fires on
+// precisely the boards this clause was written for — two walls of eights with nothing
+// profitable between them — and rolls the shot the `escape` setting was refusing.
+// Every row now terminates, `0` included. So the clause is no longer what keeps a
+// game ending; it is what keeps one ending on a frozen board that has *not* run out
+// of room, which is the case the reserve rule cannot see and the reason `0` is not
+// the default even though 69.8% is the best vs-v1 figure in the table.
 //
-// `3` is the one that keeps both. It asks the question the rule actually wants
-// answered — "if I decline, will anybody else move?" — by pricing every other living
-// player on the same scale this file prices itself on, and taking the shot only when
-// none of them has an attack that pays. **That the scale is the same one is not a
-// detail.** Pricing the rivals at v1's cheaper rate instead (`escape: 4`) reads
-// better against v1 and finishes only 394 of 400 games against itself, because this
-// seat can then be told it is not stuck while still declining: the rival has a
-// profit by the loose price, so the escape does not fire, and the rival declines it
-// by its own strict price. That is the livelock again, one step removed, and it is
-// why the rule above charges everybody the same price.
+// Read the two middle columns instead, and read them knowing that `0`, `3` and `4`
+// are inside each other's intervals on both opponents — 69.8 / 68.3 / 69.9 against
+// v1, 60.0 / 59.3 / 60.1 against v2. There is no measured difference between the
+// three, so `3` is kept for the reason this file keeps any unmeasured tie: it is a
+// strict superset of `0` in willingness, and it does not lean on the mixed price `4`
+// does. Moving the default onto a 1.6-point gap would be exactly the mistake the
+// `TUNING` comment above warns about.
 //
-// `1` is v1's rule, kept as the number to beat. `2` is the obvious first guess —
-// the seat that is behind should be the one to gamble — and it is wrong for a reason
+// What the clause is still worth is the largest single number in this file: from row
+// `1` to row `4` is nineteen points against v1 and sixteen against v2, off one rule
+// about who is willing to roll a losing attack. `1` is v1's own answer — take the
+// shot whenever you have one and nothing better — and 50.5% against v1 is what a
+// policy with no opinion about risk gets. It is also the one thing here that is
+// adversarial rather than positional: v1 rolls a cap shot about fourteen times a
+// game, and a policy that simply refuses to join in collects most of those nineteen
+// points without doing anything clever.
+//
+// `3` asks the question the rule actually wants answered — "if I decline, will
+// anybody else move?" — by pricing every other living player on the same scale this
+// file prices itself on, and taking the shot only when none of them has an attack
+// that pays. **That the scale is the same one is not a detail, and the evidence for
+// it is gone.** Pricing the rivals at v1's cheaper rate instead (`escape: 4`) used to
+// finish only 394 of 400 games against itself, because this seat could be told it was
+// not stuck while still declining: the rival had a profit by the loose price, so the
+// escape did not fire, and the rival declined it by its own strict price. The reserve
+// rule bails that out now, so `4` finishes 400 of 400 and the hazard is **masked
+// rather than fixed** — two seats can still disagree about whether the table is
+// frozen, and only the reserve rule's independent trigger stops that becoming a draw.
+// Anyone tempted to price the rivals cheaply on the grounds that the table no longer
+// complains should know that is what they are doing.
+//
+// `1` is v1's rule, kept as the number to beat. `2` is the obvious first guess — the
+// seat that is behind should be the one to gamble — and it is wrong for a reason
 // worth stating: being behind is *when you are behind*, so the rule taxes the seat
 // that is losing and shields the seat that is winning, which in a heads-up game is
 // the same as handing the game to whoever is ahead.
@@ -273,9 +347,16 @@ export const TUNING = {
    * `0` nobody, `1` everybody as v1 does, `2` whoever is behind, `3` whoever it is
    * if nobody has a good move left, `4` as `3` but with the rivals priced at v1's
    * cheaper rate. All five are one line of `blinks`, and the table with the numbers
-   * — eighteen points from top to bottom against v1 — is "The termination floor" in
-   * the header. `4` is the one that reads best and does not terminate, and why is
-   * worth reading before changing this.
+   * — nineteen points from top to bottom against v1 — is "The termination floor" in
+   * the header, which is worth reading before this is changed.
+   *
+   * This is not the only thing that makes the floor fire, and the other one has
+   * since overtaken it on the boards this table was built from. An over-stocked
+   * empire blinks whatever this says — see "The reserve" in the header — and an
+   * empire at the cap is over-stocked by construction, so every row of that table
+   * now terminates and its last column reports nothing. It is the two win-rate
+   * columns that rank the rows now, and on them `0`, `3` and `4` are tied: `3` stays
+   * because it is the safest of the three, not because it scored best.
    */
   escape: 3,
   /** How many attacks ahead to search. */
@@ -336,6 +417,41 @@ export function refill(board, adjacency, me, allies = null) {
   }
 
   return { income, need, residual: Math.max(0, need - income), slack: income - need };
+}
+
+/**
+ * The reserve the refill is about to hand back, and whether it is more than the
+ * empire it belongs to.
+ *
+ * `distributeDice` is exhaustive — it places a die on every pass and the only way
+ * out of the loop is running out of dice or running out of room — so what it hands
+ * back is exactly `stock + income - room`, where `room` is the empty space left
+ * across the empire. Every other die reaches the board. A reserve therefore only
+ * persists while the empire is close to full, and once it starts persisting it
+ * grows by `income - room` every turn, which is the ratchet: `stock > room` implies
+ * `stock + income - room > income`, so an over-stocked empire stays over-stocked
+ * and the number on the rail climbs for the rest of the game.
+ *
+ * The rule is the user's, and it is a rule about the *rail* before it is a rule
+ * about the board: a reserve is worth holding up to what the empire is worth, one
+ * banked die per province held, and past that it is a number that never reaches
+ * the board. `income` cancels out of both sides — the test is equivalent to
+ * `stock > room` — and the form below is the one that says what the rule is.
+ *
+ * Why it matters is not tidiness. A die in the reserve is not lost when an attack
+ * fails, because the next refill puts it straight back; so an over-stocked empire
+ * is playing with a failure that costs nothing, and banking is strictly worse than
+ * the shot it is declining. That is the whole of "stocks aren't good investment".
+ */
+export function overstock(board, adjacency, me, allies = null, stock = 0) {
+  const { income } = refill(board, adjacency, me, allies);
+
+  let room = 0;
+  for (let t = 0; t < board.owner.length; t++) {
+    if (board.owner[t] === me) room += MAX_DICE - board.dice[t];
+  }
+
+  return Math.max(0, stock + income - room) > income;
 }
 
 /* ── the position score ────────────────────────────────────────────────────── */
@@ -644,8 +760,26 @@ function stuck(board, adjacency, playerId, loose) {
  * rather than won — so this is a setting with a floor under it as well as a
  * ceiling over it, and both ends are measured. See "The termination floor" in
  * the header for the numbers.
+ *
+ * `over` is the second reason to blink and it is not the same question. `stuck`
+ * asks about the *table* — has everyone else run out of good moves, so the shot
+ * has to be taken by somebody? — and an over-stocked empire blinks for a reason
+ * entirely its own: it is the one who can afford the shot, so the question of who
+ * else can is moot. It is checked first because it is not a tie-break among the
+ * `escape` settings but a separate trigger, and it fires whatever `escape` says.
+ *
+ * **That turned out to matter more than a second trigger usually would**, and the
+ * measurement is worth keeping because it is the sort of thing that is invisible
+ * until somebody runs it. Every `escape` setting now finishes 400 of 400 games
+ * against itself, including `0`, which used to finish none: the boards this clause
+ * was written for — two empires at the cap, staring at each other — are exactly the
+ * boards where an empire has run out of room, so the reserve rule reaches them on
+ * its own and rolls the shot the `escape` setting was refusing. The self-play
+ * column of the table in the header therefore no longer separates the rows, and the
+ * ordering between them now rests on the two win-rate columns alone.
  */
-function blinks(board, adjacency, playerId) {
+function blinks(board, adjacency, playerId, over) {
+  if (over) return true;
   if (TUNING.escape === 0) return false;
   if (TUNING.escape === 1) return true;
   if (TUNING.escape === 2) return leaderOf(board) !== playerId;
@@ -671,12 +805,30 @@ function blinks(board, adjacency, playerId) {
  * them on whoever is ahead. That is the only place this file cares about the
  * standings rather than the board.
  */
-function greedyMove(board, adjacency, playerId, allies) {
+function greedyMove(board, adjacency, playerId, allies, stock) {
   const rank = standings(board);
+  const over = overstock(board, adjacency, playerId, allies, stock);
   let best = null;
   // Shots every other rule in this file refuses: they pay less than they cost,
-  // and they are only on the table at all because two `MAX_DICE` provinces facing
-  // each other cannot improve and something eventually has to give.
+  // and they are only on the table at all because something has to give. Two
+  // reasons qualify one, and they admit different fields.
+  //
+  // A cap-versus-cap standoff is the one this file has always had: two `MAX_DICE`
+  // provinces facing each other cannot improve and cannot be reinforced, so if
+  // both sides decline them the game is a draw. That is a statement about the
+  // *board* — the shot is admissible because no better shot exists anywhere,
+  // which is why the field is narrow.
+  //
+  // An over-stocked empire qualifies a shot on a different ground: it can pay for
+  // one, and declining pays it nothing. Its reserve is past the point where the
+  // refill can spend it, so a failed attack is refunded in full next turn and the
+  // dice banked instead would never have reached the board. The field is therefore
+  // every shot that does not pay for itself, not only the capped ones — and the
+  // cap-versus-cap case is a subset of it, since an empire whose provinces are all
+  // at `MAX_DICE` is over-stocked by construction whenever it holds anything back.
+  // Widening to the whole losing field matters because the standoff is not the only
+  // way to be out of good moves: a wall of eights facing a wall of sevens has no
+  // cap-versus-cap pair in it and is just as frozen.
   let gamble = null;
 
   for (let from = 0; from < board.owner.length; from++) {
@@ -696,7 +848,7 @@ function greedyMove(board, adjacency, playerId, allies) {
 
       if (ev <= 0) {
         const capped = mine === MAX_DICE && theirs === MAX_DICE;
-        if (capped && (gamble === null || ev > gamble.ev
+        if ((capped || over) && (gamble === null || ev > gamble.ev
           || (ev === gamble.ev && leads(rank, defender, gamble.defender)))) {
           gamble = { from, to, ev, defender };
         }
@@ -709,8 +861,11 @@ function greedyMove(board, adjacency, playerId, allies) {
     }
   }
 
+  // `best` first, and over-stocked or not: the reserve buys a *shot*, not a bad
+  // one, so a profitable attack still outranks a losing one and the widening above
+  // only decides what happens when there is nothing profitable left to do.
   if (best) return { from: best.from, to: best.to };
-  if (!gamble || !blinks(board, adjacency, playerId, allies)) return null;
+  if (!gamble || !blinks(board, adjacency, playerId, over)) return null;
   return { from: gamble.from, to: gamble.to };
 }
 
@@ -718,15 +873,25 @@ function greedyMove(board, adjacency, playerId, allies) {
  * The move to make, or null to end the turn.
  *
  * Same signature and same contract as v1's and v2's, so the driver treats all
- * three interchangeably and `tools/bot-arena.js` can seat any of them.
+ * three interchangeably and `tools/bot-arena.js` can seat any of them. The two
+ * trailing arguments are v3's own and are both optional: v1 and v2 ignore them,
+ * every caller that predates them keeps its behaviour exactly, and a caller that
+ * omits `stock` gets an empire with an empty reserve, which is never over-stocked
+ * — so the rule below is inert until somebody passes the number that turns it on.
+ *
+ * `stock` is the one piece of state the policy cannot read off the board. It is
+ * not a concession to impurity: the board is what it always was, and the reserve
+ * is a number the server already publishes on the rail. `overstock` is a statement
+ * about both, and there is no board-only formulation of it — the reserve is
+ * exactly the part of a player's position that the board does not show.
  */
-export function planMove(board, adjacency, playerId, allies = null) {
+export function planMove(board, adjacency, playerId, allies = null, stock = 0) {
   const line = bestLine(board, adjacency, playerId, allies, TUNING.depth, { nodes: 0 });
   if (line.move) return { from: line.move.from, to: line.move.to };
 
   // The termination floor, and the second place the risk price is charged. See
   // the header.
-  return greedyMove(board, adjacency, playerId, allies);
+  return greedyMove(board, adjacency, playerId, allies, stock);
 }
 
 /**

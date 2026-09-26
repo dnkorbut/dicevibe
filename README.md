@@ -311,7 +311,19 @@ residual = max(0, need - income)   — shortfall still open after the refill
   has an override, and the override has a rule: v3 prices *every* player on the
   board the same way it prices itself, and takes the shot only when nobody has an
   attack that pays. It is the difference between "I decline" and "we are stuck",
-  and it is worth eighteen points against v1 on its own.
+  and it is worth nineteen points against v1 on its own.
+- **It will not bank dice it can never spend.** The reserve a player carries is
+  only what the refill could not fit, so an empire whose front has become a wall of
+  eights banks its whole income every turn and the number on its rail climbs for the
+  rest of the game — measured on the largest board, **1497** dice that never reached
+  a province. A banked die is also a *repel that has already been paid for*, since
+  the refill would have handed it back anyway; an empire in that state is declining
+  shots on a cost it is not actually paying. So v3 predicts the reserve it is about
+  to be left with and allows at most one banked die per province it holds; past that
+  it stops banking and takes the shot, including shots that don't pay for
+  themselves. The test is exactly *is the reserve bigger than the empty space in my
+  empire*, and it is inert below that line — a reserve inside the cap changes
+  nothing about how the bot plays, which is what keeps the numbers above honest.
 
 **All three** never attack an ally, and all three negotiate: answer a waiting offer before
 moving anything else — accepting from a player who isn't in the lead, declining
@@ -349,13 +361,32 @@ v1 vs v3 — seats 3,1 — 3000 games, 143 beats each
   v1 by seat — seat 0: 50.5% (n=1512), seat 1: 10.8% (n=1488)
 
 $ npm run bench -- --seats 3,2 --games 3000
-v2 vs v3 — seats 3,2 — 3000 games, 141 beats each
+v2 vs v3 — seats 3,2 — 3000 games, 140 beats each
   v3   1835 wins   61.2%   (95% CI 59.4–62.9%)
   v2   1165 wins   38.8%   (95% CI 37.1–40.6%)
   3000 decided, 0 drawn, 0 unfinished
   v3 by seat — seat 0: 80.8% (n=1488), seat 1: 41.8% (n=1512)
   v2 by seat — seat 0: 58.2% (n=1512), seat 1: 19.2% (n=1488)
+
+$ npm run bench -- --size huge --seats 3,1 --games 1000
+v1 vs v3 — seats 3,1 — 1000 games, 385 beats each
+  v3    788 wins   78.8%   (95% CI 76.3–81.3%)
+  v1    212 wins   21.2%   (95% CI 18.7–23.7%)
+  1000 decided, 0 drawn, 0 unfinished
+  first move wins — seat 0: 59.1%, seat 1: 40.9%
+  v3 by seat — seat 0: 89.1% (n=485), seat 1: 69.1% (n=515)
+  v1 by seat — seat 0: 30.9% (n=515), seat 1: 10.9% (n=485)
 ```
+
+The first three runs are the ones that were already published and they came back
+**identical**, to the seat split and to the beat count — which is the point of the
+reserve rule rather than a coincidence: it cannot fire on a board where no empire
+has run out of room, and on the default board none does. The `huge` run is the one
+that moves, and what it moves is not the score. Against the same opponent on the
+same board with the rule switched off, v3 scores 78.3%; with it on, 78.8%. That
+half-point is inside the interval and should be read as no change, because that is
+what it is: the rule costs nothing and buys back the four figures of reserve.
+
 
 The ordering is clean and every interval excludes 50: **v3 beats v2 61.2%, and v2
 beats v1 58.1%.** Both of those hold heads-up and at a four-player table, where v2
@@ -391,12 +422,23 @@ plateau: `risk: 1`, which prices a failed attack at nothing, scores 61.8% agains
 nothing, scores 62.8% against 69.2%. Those two defaults are load-bearing and the
 rest are where a number happened to land.
 
-**Where v3's eighteen points come from**, since "a better score" is not an
+**Where v3's nineteen points come from**, since "a better score" is not an
 explanation. Against v1, with everything else held: the search is worth about eight
 (`depth: 0`, which drops the search and leaves the re-priced greedy rule, scores
 60.6%), and the rule about who is willing to roll a losing attack is worth about
-seventeen (v1's own version of that rule scores 51.3%). The position score and the
+nineteen (v1's own version of that rule scores 50.5%). The position score and the
 escape rule are the policy; the beam is v2's, borrowed unchanged.
+
+The escape rule's numbers were re-measured after the reserve rule landed, and the
+reserve rule took over part of its job: rolling a losing shot is now also what an
+empire does when it is holding dice it cannot place, and that reaches exactly the
+frozen boards the escape clause was written for. Every setting of it now finishes
+400 of 400 games against itself, where before one of them finished none, so the
+termination column that used to justify the default no longer separates the rows —
+`0`, `3` and `4` are inside each other's intervals on both opponents. `3` stays
+because it is the safest of the three rather than because it measured best: it is a
+superset of `0` in willingness, and unlike `4` it does not price the two seats by
+different standards.
 
 The arena drives the same functions the server does — there is no second copy of
 any rule in it — so what it measures is the shipped game. Two things about how it
@@ -410,6 +452,14 @@ is run are worth knowing before trusting a number from it:
   all-one-policy table has to come out near the first-move advantage — about 70/30
   — because that is a fact about the board. A control reading 50/50 across two
   seats is not a neutral harness; it is a harness that has stopped measuring.
+- **The board size is a flag, and the default is a small board.** `--size
+  small|medium|large|huge` deals every game on the size named; absent means the
+  default the menu starts on, which is what every figure above was measured on.
+  This is worth knowing because some behaviour only appears on a big map. An empire
+  cannot bank a reserve until it has run out of room to spend one, and on 70
+  provinces a game ends first — v3 held up to 1497 dice on `huge` and never more
+  than a few dozen on the default, and the three thousand games above could not
+  have caught it.
 
 ## Maps
 
@@ -475,7 +525,7 @@ plain `npm start`:
 npm test
 ```
 
-303 tests, run by `node --test` with no test framework:
+308 tests, run by `node --test` with no test framework:
 
 - **Rules** — attack resolution, reinforcement placement, elimination and the win
   check, including Monte Carlo checks on the dice maths.
@@ -488,7 +538,9 @@ npm test
   stops ending. Note what it can and cannot say: v3 *is* allowed to decline a shot
   v1 would have taken, so the assertion is that every decline prices as
   unprofitable — not, as an earlier version of it claimed, that v3 moves whenever v1
-  would.
+  would. v3's reserve rule gets its own set, and the one that matters is the
+  negative: a reserve inside the cap provably changes nothing about how the bot
+  plays, which is what makes the bench figures above still describe it.
 - **Maps** — every preset generates a connected, playable board at every size.
 - **Rooms** — seats, the grace period after a disconnect, and what a snapshot is
   allowed to contain.

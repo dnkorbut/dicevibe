@@ -16,7 +16,7 @@ import { MAX_DICE, NEUTRAL } from '../shared/constants.js';
 import { attackRolls, canAttack, winChance } from '../shared/rules.js';
 import { planMove as planMoveV1 } from '../server/bot-v1.js';
 import { planMove as planMoveV2 } from '../server/bot-v2.js';
-import { evaluate, moveValue, planMove, refill, TUNING } from '../server/bot-v3.js';
+import { evaluate, moveValue, overstock, planMove, refill, TUNING } from '../server/bot-v3.js';
 import { makeRng } from '../server/rng.js';
 
 const ME = 'p1';
@@ -231,6 +231,162 @@ test('v3 grows when the refill can pay for it, and v2 does not grow then either'
   assert.deepEqual(planMoveV2(board, adjacency, ME, null), { from: 0, to: 1 });
 });
 
+/* ── the reserve, and what it buys ─────────────────────────────────────────── */
+
+test('overstock is the reserve outgrowing the empire that is holding it', () => {
+  // Two borders onto the same enemy at 8. In the first board both provinces are
+  // spent, so the empire is full and the whole of its income has nowhere to go; in
+  // the second both sit at 5, so there are six dice of room for the refill to fill
+  // before anything is banked at all.
+  const full = { owner: [ME, ME, THEM], dice: [MAX_DICE, MAX_DICE, MAX_DICE] };
+  const roomy = { owner: [ME, ME, THEM], dice: [5, 5, MAX_DICE] };
+  const adjacency = [[1, 2], [0, 2], [0, 1]];
+
+  // The empire is worth two provinces, so two dice is what it may hold, and the
+  // question is about the *next* refill rather than this one — "calculate whether
+  // it gonna stock". On a full empire the whole of the income is banked, so an
+  // empty reserve lands on exactly the cap and anything above an empty reserve is
+  // already past it. Which is the rule doing its job: the grace is one turn, and
+  // after that the empire is spending a reserve it cannot place.
+  assert.equal(overstock(full, adjacency, ME, null, 0), false, 'two banked, two held');
+  assert.equal(overstock(full, adjacency, ME, null, 1), true, 'one die banked becomes three');
+  assert.equal(overstock(full, adjacency, ME, null, 40), true);
+
+  // Same arithmetic with room on the board, and the room is what absorbs the
+  // reserve: six dice of empty space will swallow six banked dice before anything
+  // is left over, so seven is the first one that ends up over the cap. Six and
+  // seven either side of that line is the whole boundary.
+  assert.equal(overstock(roomy, adjacency, ME, null, 6), false, 'six banked, six of room');
+  assert.equal(overstock(roomy, adjacency, ME, null, 7), true, 'one past the room');
+  assert.equal(overstock(roomy, adjacency, ME, null, 20), true);
+
+  // Nobody's empire, so nothing to be over. The guard is here because a player
+  // with no provinces is the one case where the rule has no meaning, and a policy
+  // that is not at the table must not be over-stocked at it.
+  assert.equal(overstock({ owner: [THEM], dice: [4] }, [[]], ME, null, 0), false);
+});
+
+test('overstock is exactly the reserve exceeding the empire, on boards nobody wrote down', () => {
+  // The source comment claims the test reduces to `stock > room`, because `income`
+  // cancels out of both sides. That kind of claim is true until the arithmetic
+  // moves under it, and this is the arithmetic the whole rule is, so it is checked
+  // rather than asserted in prose.
+  for (let seed = 1; seed <= 120; seed++) {
+    const { board, adjacency } = randomBoard(makeRng(seed));
+
+    for (const me of [ME, THEM]) {
+      let room = 0;
+      for (let t = 0; t < board.owner.length; t++) {
+        if (board.owner[t] === me) room += MAX_DICE - board.dice[t];
+      }
+
+      for (const stock of [0, 1, 2, 7, 50, 500]) {
+        assert.equal(
+          overstock(board, adjacency, me, null, stock),
+          stock > room,
+          `seed ${seed}: ${me} holding ${stock} against ${room} of room`,
+        );
+      }
+    }
+  }
+});
+
+test('a reserve inside the cap changes nothing at all', () => {
+  // The half of the rule that has to be true for the other half to be affordable:
+  // an empire that is not over-stocked plays exactly the game it played before the
+  // reserve existed. Every published number for this policy was measured without a
+  // reserve, and this is what says those numbers still describe it — the rule is
+  // inert on the boards the benchmark plays and only wakes up on a board that has
+  // run out of room.
+  let inert = 0;
+
+  for (let seed = 1; seed <= 200; seed++) {
+    const { board, adjacency } = randomBoard(makeRng(seed));
+
+    for (const me of [ME, THEM]) {
+      for (const stock of [1, 5, 30]) {
+        if (overstock(board, adjacency, me, null, stock)) continue;
+        inert++;
+        assert.deepEqual(
+          planMove(board, adjacency, me, null, stock),
+          planMove(board, adjacency, me, null, 0),
+          `seed ${seed}: ${me} with ${stock} banked played a different game`,
+        );
+      }
+    }
+  }
+
+  assert.ok(inert > 500, `the reserve was over the cap almost everywhere, so this proved little (${inert})`);
+});
+
+test('an over-stocked v3 ends its turn only when it has nothing left to attack', () => {
+  // The rule, stated as the property it is: past the cap the policy stops banking
+  // and takes a shot, so a turn that ends with the reserve over the cap and a legal
+  // attack on the board is the one thing it must never do. A reserve of 200 is over
+  // the cap on every board a random fixture deals, so this exercises the whole of
+  // the widened field rather than a corner of it.
+  let declined = 0;
+
+  for (let seed = 1; seed <= 200; seed++) {
+    const { board, adjacency } = randomBoard(makeRng(seed));
+
+    for (const me of [ME, THEM]) {
+      const stock = 200;
+      if (!overstock(board, adjacency, me, null, stock)) continue;
+
+      let attackable = false;
+      for (let from = 0; from < board.owner.length && !attackable; from++) {
+        if (board.owner[from] !== me) continue;
+        for (const to of adjacency[from]) {
+          // `=== true`, because `canAttack` answers with an error *object* rather
+          // than `false` when it refuses, and every refusal is truthy.
+          if (canAttack(board, adjacency, from, to, me) === true) {
+            attackable = true;
+            break;
+          }
+        }
+      }
+
+      const move = planMove(board, adjacency, me, null, stock);
+      if (move === null) declined++;
+      assert.equal(
+        move === null,
+        !attackable,
+        `seed ${seed}: ${me} ${move === null ? 'banked' : 'moved'} with`
+          + ` ${attackable ? 'a legal attack' : 'nothing to attack'} on the board`,
+      );
+    }
+  }
+
+  assert.ok(declined > 0, 'every over-stocked board had an attack, so the branch was never reached');
+});
+
+test('the reserve buys a shot the policy would otherwise refuse', () => {
+  // The fixture has to isolate the reserve from both other reasons v3 moves. `p3`
+  // sits on the far side with an eight facing a three, so somebody else still has a
+  // profitable attack and the escape clause's `stuck` test says the table is not
+  // frozen — the only thing left that can make v3 move is its own banked dice.
+  //
+  // Both of my provinces are at the cap and my one neighbour is at the cap, so the
+  // shot is the worst kind this file can price and every other rule declines it.
+  const adjacency = [[1, 2], [0], [0], [4], [3, 5], [4]];
+  const capped = { owner: [ME, ME, THEM, 'p3', 'p3', THEM], dice: [8, 8, 8, 8, 8, 3] };
+
+  assert.equal(planMove(capped, adjacency, ME, null, 0), null, 'nothing banked, nothing taken');
+  assert.deepEqual(planMove(capped, adjacency, ME, null, 1), { from: 0, to: 2 });
+
+  // And the widening. Here the neighbour is at seven rather than eight, so there is
+  // no cap-versus-cap standoff anywhere on the board and the escape clause can
+  // never fire — the shot is admitted on the reserve alone. This is the case the
+  // user's rule is really about: a wall of eights facing a wall of sevens is just
+  // as frozen as two eights facing each other, and it is the one the old policy
+  // banked through for the rest of the game.
+  const wall = { owner: [ME, ME, THEM, 'p3', 'p3', THEM], dice: [8, 8, 7, 8, 8, 3] };
+
+  assert.equal(planMove(wall, adjacency, ME, null, 0), null, 'the old policy banks here');
+  assert.deepEqual(planMove(wall, adjacency, ME, null, 1), { from: 0, to: 2 });
+});
+
 /* ── it still plays the game ───────────────────────────────────────────────── */
 
 test('v3 does not throw an army away at a one-in-a-hundred shot at winning', () => {
@@ -276,31 +432,47 @@ test('v3 still closes out a game it can only win by gambling', () => {
 /* ── properties, over boards nobody wrote down ─────────────────────────────── */
 
 test('v3 never returns an illegal move', () => {
+  // Every reserve is swept, not just the empty one, because the reserve is what
+  // widens the field the termination floor chooses from — see `greedyMove`. A
+  // legality sweep at `stock: 0` alone would leave the widened branch unchecked,
+  // which is the branch the whole change is.
   for (let seed = 1; seed <= 150; seed++) {
     const { board, adjacency } = randomBoard(makeRng(seed));
 
     for (const me of [ME, THEM]) {
-      const move = planMove(board, adjacency, me, null);
-      if (!move) continue;
+      for (const stock of [0, 4, 60]) {
+        const move = planMove(board, adjacency, me, null, stock);
+        if (!move) continue;
 
-      assert.equal(
-        canAttack(board, adjacency, move.from, move.to, me),
-        true,
-        `seed ${seed}: ${me} proposed ${move.from}->${move.to} on ${JSON.stringify(board)}`,
-      );
+        assert.equal(
+          canAttack(board, adjacency, move.from, move.to, me),
+          true,
+          `seed ${seed}: ${me} with ${stock} banked proposed ${move.from}->${move.to}`
+            + ` on ${JSON.stringify(board)}`,
+        );
+      }
     }
   }
 });
 
 test('v3 never attacks an ally', () => {
+  // A reserve does not buy a pact. The ally filter sits in the neighbour loop
+  // beside the self-check, so widening what the floor will *consider* cannot widen
+  // what it may touch — but that is an argument, and this is the check on it.
   for (let seed = 1; seed <= 120; seed++) {
     const { board, adjacency } = randomBoard(makeRng(seed), 10);
     const allies = new Set([THEM]);
 
-    const move = planMove(board, adjacency, ME, allies);
-    if (!move) continue;
+    for (const stock of [0, 60]) {
+      const move = planMove(board, adjacency, ME, allies, stock);
+      if (!move) continue;
 
-    assert.notEqual(board.owner[move.to], THEM, `seed ${seed}: attacked an ally at ${move.to}`);
+      assert.notEqual(
+        board.owner[move.to],
+        THEM,
+        `seed ${seed}: attacked an ally at ${move.to} with ${stock} banked`,
+      );
+    }
   }
 });
 

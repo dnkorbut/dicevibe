@@ -407,7 +407,16 @@ function stepBot(room) {
     }
   }
 
-  const move = policy.planMove(room.game.board, room.game.adjacency, player.id, allySetOf(player));
+  // `player.stock` rides along because v3 prices an attack against the reserve and
+  // not only against the board — see `overstock`. v1 and v2 do not take it and do
+  // not care; passing it costs them nothing.
+  const move = policy.planMove(
+    room.game.board,
+    room.game.adjacency,
+    player.id,
+    allySetOf(player),
+    player.stock,
+  );
   const result = move ? attack(room, player.id, move.from, move.to) : endTurn(room, player.id);
 
   if (!result.ok) {

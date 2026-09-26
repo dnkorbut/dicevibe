@@ -67,8 +67,9 @@
 //   node tools/bot-arena.js --sweep province    # does that weight actually matter?
 //   node tools/bot-arena.js --tune 3 --vs 2 --sweep shortfall   # v3's weights, v2's table
 //   node tools/bot-arena.js --seats 3,2 --set shortfall=4       # one weight, run properly
+//   node tools/bot-arena.js --size huge --seats 3,1             # on a board big enough to bank on
 
-import { PHASE } from '../shared/constants.js';
+import { MAP_SIZES, PHASE } from '../shared/constants.js';
 import {
   allySetOf,
   applyAlliance,
@@ -142,7 +143,7 @@ function playGame(seats, mapId, seed) {
   // table is precisely what an arena wants. A harness reaching into the seat is
   // acceptable here in a way it would not be in the server; nothing about the
   // game's rules depends on it.
-  const { room } = createRoom({ nickname: 'arena', mapId, socketId: 'arena-0' });
+  const { room } = createRoom({ nickname: 'arena', mapId, sizeId: SIZE_ID, socketId: 'arena-0' });
   room.players[0].isBot = true;
   room.players[0].botVersion = seats[0];
   for (const version of seats.slice(1)) addBot(room, version);
@@ -176,6 +177,7 @@ function playGame(seats, mapId, seed) {
       room.game.adjacency,
       player.id,
       allySetOf(player),
+      player.stock,
     );
     const result = move
       ? attack(room, player.id, move.from, move.to)
@@ -323,13 +325,16 @@ function report(label, result) {
 }
 
 function parseArgs(argv) {
-  const args = { games: 200, seats: null, sweep: null, tune: 2, vs: 1, set: new Map() };
+  const args = {
+    games: 200, seats: null, sweep: null, tune: 2, vs: 1, size: null, set: new Map(),
+  };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--games') args.games = Number.parseInt(argv[++i], 10);
     else if (argv[i] === '--seats') args.seats = argv[++i].split(',').map(Number);
     else if (argv[i] === '--sweep') args.sweep = argv[++i];
     else if (argv[i] === '--tune') args.tune = Number.parseInt(argv[++i], 10);
     else if (argv[i] === '--vs') args.vs = Number.parseInt(argv[++i], 10);
+    else if (argv[i] === '--size') args.size = argv[++i];
     else if (argv[i] === '--set') {
       const [key, value] = argv[++i].split('=');
       args.set.set(key, Number(value));
@@ -346,6 +351,27 @@ function progress(done, total) {
 
 const args = parseArgs(process.argv.slice(2));
 const maps = MAP_CHOICES;
+
+// The board size every game is dealt on. Absent means the default the menu starts
+// on, which is what every run before this flag existed played, so the figures in the
+// README are still comparable.
+//
+// It is a flag now because the default is a *small* board and some behaviour only
+// appears on a large one. An empire cannot bank a reserve until it has run out of
+// room to spend one, and on 70 provinces a game ends before that happens: v3's
+// over-stocking reached 1145 dice on `huge` and 38 on the default, and the three
+// thousand games this harness had already run on the default could not have caught
+// it however many were played.
+//
+// A size that is present but unrecognised is refused here rather than left to
+// `createRoom`, which answers `BAD_REQUEST` and would surface as "arena game would
+// not start: bad_request" — a message that reads like a game bug, not a mistyped
+// flag.
+if (args.size !== null && !MAP_SIZES.some((s) => s.id === args.size)) {
+  console.error(`--size must be one of ${MAP_SIZES.map((s) => s.id).join(', ')} (got: ${args.size})`);
+  process.exit(1);
+}
+const SIZE_ID = args.size;
 
 // `--set key=value`, applied before anything plays. A sweep answers "does this
 // number matter at all" over a handful of points; this is how one of those points
